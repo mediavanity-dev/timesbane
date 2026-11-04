@@ -97,7 +97,8 @@ function paper() {
 // ---------- memory: the piece remembers you ----------
 const MEM = (() => {
   let m = null;
-  try { m = JSON.parse(localStorage.getItem('caa') || 'null'); } catch (e) {}
+  // memory lives under 'timesbane'; visitors from before the rename are carried over from the old key
+  try { m = JSON.parse(localStorage.getItem('timesbane') || localStorage.getItem('caa') || 'null'); } catch (e) {}
   if (!m || typeof m !== 'object') m = {};
   m.visits = (m.visits | 0) + 1;
   m.strokes = Array.isArray(m.strokes) ? m.strokes.filter(s => Array.isArray(s) && s.length > 2) : [];
@@ -184,7 +185,7 @@ try {
   if (navigator.permissions && navigator.geolocation) navigator.permissions.query({ name: 'geolocation' }).then(r => { if (r.state === 'granted') askLocation(); }).catch(() => {});
 } catch (e) {}
 const pastStrokes = MEM.strokes.slice();
-function saveMem() { try { localStorage.setItem('caa', JSON.stringify(MEM)); } catch (e) {} }
+function saveMem() { try { localStorage.setItem('timesbane', JSON.stringify(MEM)); localStorage.removeItem('caa'); } catch (e) {} }
 // The only record of a discovery is a gold star in the night sky of Absence.
 function found(id) { const first = !MEM.found[id]; if (first) { MEM.found[id] = Date.now(); saveMem(); } return first; }
 const SESSION = {};
