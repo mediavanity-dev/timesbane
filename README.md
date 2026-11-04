@@ -19,6 +19,16 @@ There are twelve movements. They drift into one another on their own, or you can
 | Epicycles | Fourier series | Your drawing (or an old one of yours) is rebuilt from circles turning on circles, 1, 2, 3, 5, 8… at a time, and its circles become a chord |
 | Relativity | Gravitational time dilation | A grid of clocks slows and bends near your finger. They stay out of sync afterwards. Double-tap to resynchronise |
 
+## Getting around
+
+Nothing tells you any of this.
+
+- Wait: each movement moves on by itself after about a minute without input.
+- Tap the turning mark in the corner.
+- Two-finger swipe left goes forward; two-finger swipe right goes back to where you were.
+- Press and hold the top-left corner: a ring slowly closes and a door opens to a random movement.
+- Turn the phone face-down, then back up: you wake somewhere else.
+
 ## Sensors
 
 - **Tilt** (orientation): slides the debris in Unbreaking, turns the Cave's 4D object, bends Droste's tunnel, blows the wind in Absence and nudges the Sunflower's angle.

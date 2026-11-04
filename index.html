@@ -288,7 +288,15 @@ addEventListener('deviceorientation', e => {
   hasTilt = true;
   tiltRaw.x = clamp(e.gamma / 40, -1, 1);
   tiltRaw.y = clamp((e.beta - 50) / 40, -1, 1);
+  // Face down: the world is not watching. Turn it back over and you wake up somewhere else.
+  const fd = Math.abs(e.beta) > 150 && Math.abs(e.gamma) < 35;
+  if (fd && !FACE.down) { FACE.down = true; FACE.t = T; if (started) S.note(mtof(81), { g: .03, a: 1.2, d: 3 }); }
+  else if (!fd && FACE.down && Math.abs(e.beta) < 120) {
+    FACE.down = false;
+    if (started && T - FACE.t > .7) { go(randomOther()); [0, 4, 7].forEach((k, i) => S.note(scaleNote(62, k), { g: .045, d: 3, at: i * .12 })); }
+  }
 });
+const FACE = { down: false, t: 0 };
 // Accelerometer: e = how restless the phone is (≈0 when held perfectly still); a sharp jolt is a shake.
 const MOTION = { has: false, e: 0, last: null, shakeT: -9 };
 addEventListener('devicemotion', ev => {
@@ -1584,7 +1592,17 @@ function enterMove(i) {
   curI = i; cur = MOVES[i](); cur.enter(); mStart = T;
   document.body.classList.toggle('paper', !!cur.paper);
 }
-function go(i) { if (phase === 'out' || !started) return; nextI = i; phase = 'out'; }
+const HIST = [];
+function go(i, back) {
+  if (phase === 'out' || !started || i === curI) return;
+  if (!back) { HIST.push(curI); if (HIST.length > 40) HIST.shift(); }
+  nextI = i; phase = 'out';
+}
+function goBack() { if (HIST.length && phase !== 'out') go(HIST.pop(), true); }
+function randomOther() { let i; do { i = Math.random() * MOVES.length | 0; } while (i === curI && MOVES.length > 1); return i; }
+const whoosh = back => S.noise({ rev: !back, dur: .5, f: 3000, ft: 'lowpass', g: .08 });
+// hidden doors
+let swipe = null, door = null;
 function begin(i) { started = true; enterMove(i); phase = 'in'; fade = 1; document.getElementById('nx').classList.add('on'); document.getElementById('sd').classList.add('on'); }
 
 const hashM = /^#m(\d{1,2})$/.exec(location.hash);
@@ -1641,6 +1659,18 @@ function loop(now) {
   if (phase === 'out') { fade = Math.min(1, fade + dt / 1.1); if (fade >= 1) { enterMove(nextI); phase = 'in'; } }
   else if (phase === 'in') { fade = Math.max(0, fade - dt / 1.6); if (fade <= 0) phase = 'idle'; }
   if (fade > 0) { g.fillStyle = `rgba(5,4,7,${easeIO(fade)})`; g.fillRect(0, 0, W, H); }
+  if (door) {
+    const p = P.get(door.id);
+    if (!p || p.moved > 14 || phase !== 'idle') door = null;
+    else {
+      const k = (T - door.t - .3) / 1.5;
+      if (k > 0) {
+        g.strokeStyle = cur.paper ? 'rgba(26,22,32,.5)' : 'rgba(236,228,214,.5)'; g.lineWidth = 1.2;
+        g.beginPath(); g.arc(30, 30, 14 * (1 - k * .5), -Math.PI / 2, -Math.PI / 2 + TAU * Math.min(1, k)); g.stroke();
+      }
+      if (k >= 1) { door = null; buzz(25); S.bell(scaleNote(62, 9), 0, .5); go(randomOther()); }
+    }
+  }
   if (phase === 'idle' && T - mStart > cur.dur && T - lastInput > 6 && !P.size) go(nextIdx());
 }
 requestAnimationFrame(loop);
@@ -1653,6 +1683,9 @@ cv.addEventListener('pointerdown', e => {
   const p = { id: e.pointerId, x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY, dx: 0, dy: 0, sx: e.clientX, sy: e.clientY, t0: T, moved: 0 };
   P.set(e.pointerId, p); lastInput = T;
   if (P.size === 1) REC.start(p);
+  if (P.size === 2) { const [a, b] = [...P.values()]; swipe = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, t: T, done: false }; }
+  else if (P.size > 2) swipe = null;
+  if (P.size === 1 && p.x < 64 && p.y < 64) door = { id: p.id, t: T };
   const dbl = T - lastDown.t < .32 && Math.hypot(p.x - lastDown.x, p.y - lastDown.y) < 50;
   lastDown = { t: T, x: p.x, y: p.y };
   if (phase === 'out') return;
@@ -1665,12 +1698,20 @@ cv.addEventListener('pointermove', e => {
   p.px = p.x; p.py = p.y; p.x = e.clientX; p.y = e.clientY; p.dx = p.x - p.px; p.dy = p.y - p.py;
   p.moved += Math.hypot(p.dx, p.dy); lastInput = T;
   REC.move(p);
+  if (swipe && !swipe.done && P.size === 2 && phase === 'idle') {
+    const [a, b] = [...P.values()], dx = (a.x + b.x) / 2 - swipe.x, dy = (a.y + b.y) / 2 - swipe.y;
+    if (T - swipe.t < .9 && Math.abs(dx) > Math.min(W * .3, 160) && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      swipe.done = true;
+      if (dx < 0) { whoosh(false); go(nextIdx()); } else if (HIST.length) { whoosh(true); goBack(); }
+    }
+  }
   if (phase !== 'out' && cur.move) cur.move(p);
 });
 function release(e) {
   const p = P.get(e.pointerId);
   if (!p) { if (!started && e.type === 'pointerup') ignite(); return; }
   P.delete(e.pointerId); lastInput = T;
+  if (P.size < 2) swipe = null;
   REC.end(p);
   if (cur && cur.up) cur.up(p);
 }
