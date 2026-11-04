@@ -267,6 +267,14 @@ const S = {
       end() { if (dead) return; dead = true; const t = c.currentTime; gn.gain.setTargetAtTime(0, t, .15); o.stop(t + 1); o2.stop(t + 1); }
     };
   },
+  partials(list) {
+    const c = this.c; if (!c || !list.length) return { stop() {} };
+    const bus = c.createGain(); bus.gain.value = 0; bus.connect(this.dry);
+    const ws = c.createGain(); ws.gain.value = .6; bus.connect(ws); ws.connect(this.wet);
+    const os = list.map(({ f, g: v, pan }) => { const o = c.createOscillator(); o.frequency.value = f; const gn = c.createGain(); gn.gain.value = v; o.connect(gn); this.pan(gn, pan || 0).connect(bus); o.start(); return o; });
+    bus.gain.setTargetAtTime(1, c.currentTime, .8);
+    return { stop() { const t = c.currentTime; bus.gain.setTargetAtTime(0, t, .4); os.forEach(o => o.stop(t + 2.5)); } };
+  },
   toggle() { this.on = !this.on; if (this.c) this.out.gain.setTargetAtTime(this.on ? .85 : 0, this.c.currentTime, .2); return this.on; }
 };
 
@@ -290,8 +298,9 @@ function Shy() {
   const ghost = new Ghost();
   let ps = [], o = 0, ts = 1, lt = 0, lastTouch = -99, opened = false, hb = 0, lx = 0, ly = 0;
   const E = { cx: 0, cy: 0, w: 0, h: 0, R: 0, gx: 0, gy: 0, bl: 1, nb: 0, bt: -1 };
+  const F = [.0034 * rand(.6, 1.5), .0041 * rand(.6, 1.5), .0021 * rand(.6, 1.6)], EH = rand(.4, .53);
   function layout() {
-    E.cx = W / 2; E.cy = H * .46; E.w = Math.min(W * .43, H * .32); E.h = E.w * .47; E.R = E.h * .9;
+    E.cx = W / 2; E.cy = H * .46; E.w = Math.min(W * .43, H * .32); E.h = E.w * EH; E.R = E.h * .9;
     if (!E.gx) { E.gx = E.cx; E.gy = E.cy; }
   }
   function spawn() {
@@ -383,7 +392,7 @@ function Shy() {
         const p = ps[i];
         let lts = 1;
         if (ghost.down) { const ex = p.x - ghost.x, ey = p.y - ghost.y, d2 = ex * ex + ey * ey; if (d2 < GR2) lts = d2 / GR2; }
-        const a = Math.sin(p.x * .0034 + lt * .11) * 1.7 + Math.cos(p.y * .0041 - lt * .09) * 1.7 + Math.sin((p.x - p.y) * .0021 + lt * .05) * 2.2;
+        const a = Math.sin(p.x * F[0] + lt * .11) * 1.7 + Math.cos(p.y * F[1] - lt * .09) * 1.7 + Math.sin((p.x - p.y) * F[2] + lt * .05) * 2.2;
         let vx = Math.cos(a) * 1.15, vy = Math.sin(a) * 1.15;
         if (oe > .001) {
           let qx, qy;
@@ -436,12 +445,18 @@ const PROFILES = [
   y => .42 * Math.sin(Math.PI * Math.pow(y, 1.6)) + .006,                                                 // seed
   y => .1 + .37 * y * y,                                                                                  // bell
 ];
+function randProfile() {
+  const n = 3 + (Math.random() * 3 | 0), pts = [[0, rand(.05, .3)]];
+  for (let i = 1; i <= n; i++) pts.push([i / (n + 1), rand(.08, .45)]);
+  pts.push([1, rand(.05, .3)]);
+  return y => interp(pts, y) + .006;
+}
 function Unbreaking() {
   const INK = ['#1a1620', '#2d2632'];
   let objs = [], Hh = 0, rings = [], lastAct = 0, rr = 0, lastTick = 0;
   const TT = 1.9;
   function build(pi) {
-    const prof = PROFILES[pi], R = 17, C = 6, V = [];
+    const prof = typeof pi === 'function' ? pi : PROFILES[pi], R = 17, C = 6, V = [];
     for (let i = 0; i <= R; i++) {
       const row = [];
       for (let j = 0; j <= C; j++) {
@@ -461,7 +476,7 @@ function Unbreaking() {
         sh.push({ hx, hy, v: t.map(q => [q[0] - hx, q[1] - hy]), x: 0, y: 0, r: 0, vx: 0, vy: 0, vr: 0, sx: 0, sy: 0, sr: 0, ex: 0, ey: 0, er: 0, cx: 0, cy: 0, t0: 0, du: 1, tone: Math.random() < .5 ? 0 : 1 });
       }
     }
-    return { pi, sh, state: 'debris', t: 0, ax: 0, ay: 0, note: scaleNote(55, pi * 2) };
+    return { pi, sh, state: 'debris', t: 0, ax: 0, ay: 0, note: scaleNote(55, (typeof pi === 'number' ? pi : Math.random() * 5 | 0) * 2) };
   }
   function scatter(o) { for (const s of o.sh) { s.x = rand(14, W - 14); s.y = rand(14, H - 14); s.r = rand(0, TAU); } }
   function gather(o, x, y) {
@@ -509,7 +524,7 @@ function Unbreaking() {
     dur: 70, paper: true, hiddenTitle: 'something is falling apart',
     enter() {
       Hh = Math.min(W * .95, H * .55) * .72;
-      const picks = shuffle([0, 1, 2, 3, 4]).slice(0, 3);
+      const picks = shuffle([0, 1, 2, 3, 4, randProfile(), randProfile(), randProfile()]).slice(0, 3);
       objs = picks.map(build); objs.forEach(scatter);
       lastAct = T - 5;
       S.drone([mtof(43), mtof(50), mtof(55), mtof(62)], .35, 1200);
@@ -675,7 +690,7 @@ function Cave() {
   return {
     dur: 60, hiddenTitle: 'we were only shadows',
     enter() {
-      rot4(M, 0, 3, .6); rot4(M, 1, 2, .4); lastSwitch = T;
+      rot4(M, 0, 3, rand(0, TAU)); rot4(M, 1, 2, rand(0, TAU)); rot4(M, 0, 1, rand(0, TAU)); ci = Math.random() * objs.length | 0; lastSwitch = T;
       g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
       S.drone([mtof(33), mtof(40), mtof(45), mtof(52)], .45, 520);
     },
@@ -900,7 +915,8 @@ function Asemic() {
 //    Hold still and it pours back out toward you.
 // ======================================================================
 function Droste() {
-  let fb, fx, tb, tbx, z = .976, hue = rand(0, 360), holdT = 0, ha = { x: 0, y: 0 }, voice = null, wasRev = false;
+  const ZB = rand(.968, .984), RS = (Math.random() < .5 ? 1 : -1) * rand(.5, 1.6);
+  let fb, fx, tb, tbx, z = ZB, hue = rand(0, 360), holdT = 0, ha = { x: 0, y: 0 }, voice = null, wasRev = false;
   const prev = new Map(), ghost = new Ghost();
   function setup() {
     fb = mk(W, H); fx = fb.getContext('2d'); tb = mk(fb.width, fb.height); tbx = tb.getContext('2d');
@@ -933,8 +949,8 @@ function Droste() {
     frame(dt) {
       const touching = P.size > 0, rev = touching && T - holdT > .75;
       if (rev !== wasRev) { wasRev = rev; if (rev) { S.bell(mtof(36), 0, .6); buzz(20); } }
-      z = lerp(z, rev ? 1.03 : .976, 1 - Math.exp(-dt * 3));
-      const zz = Math.pow(z, dt * 60), rr = (.0028 + TILT.x * .014) * dt * 60;
+      z = lerp(z, rev ? 1.03 : ZB, 1 - Math.exp(-dt * 3));
+      const zz = Math.pow(z, dt * 60), rr = (.0028 * RS + TILT.x * .014) * dt * 60;
       const cx = W / 2 + TILT.x * W * .12, cy = H / 2 + TILT.y * H * .12;
       tbx.globalCompositeOperation = 'copy'; tbx.drawImage(fb, 0, 0);
       fx.globalCompositeOperation = 'source-over'; fx.globalAlpha = 1;
@@ -1094,16 +1110,419 @@ function Absence() {
 }
 
 // ======================================================================
+// VII. SUNFLOWER — one irrational number is the difference between
+//      a flower and noise. Touch bends the golden angle.
+// ======================================================================
+function Sunflower() {
+  const GA = Math.PI * (3 - Math.sqrt(5));
+  let n = 0, off = 0, N = 0, c = 0, rot = 0, wasOff = false, lastQ = 0, lastQT = 0;
+  function spokes(x) { for (let q = 1; q <= 89; q++) { const f = x * q; if (Math.abs(f - Math.round(f)) < .004) return q; } return 0; }
+  return {
+    dur: 58, hiddenTitle: '137.507764°',
+    enter() {
+      N = Math.round(clamp(W * H / 150, 1000, 2800)); c = Math.min(W, H) * .48 / Math.sqrt(N); n = 0;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      S.drone([mtof(41), mtof(48), mtof(53), mtof(60)], .35, 800);
+    },
+    resize() { c = Math.min(W, H) * .48 / Math.sqrt(N); },
+    frame(dt) {
+      const f0 = P.values().next().value;
+      n += dt * (f0 ? 22 : 110);
+      const target = f0 ? (f0.x / W - .5) * .07 + (f0.y / H - .5) * .01 : TILT.rx * .003;
+      off = lerp(off, target, 1 - Math.exp(-dt * (f0 ? 5 : 2)));
+      rot += dt * .06;
+      if (Math.abs(off) > .004) wasOff = true;
+      if (wasOff && !f0 && Math.abs(off) < .0006) { wasOff = false; S.bell(scaleNote(53, 4), 0, .6); }
+      const q = Math.abs(off) > .0015 ? spokes((GA + off) / TAU) : 0;
+      if (q && q !== lastQ && T - lastQT > .12) { lastQT = T; S.note(scaleNote(53, q % 15), { g: .05, d: 2, pan: clamp(off * 25, -1, 1) }); }
+      lastQ = q;
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = 'rgba(5,4,7,.45)'; g.fillRect(0, 0, W, H);
+      const cx = W / 2, cy = H / 2, k0 = Math.max(0, Math.floor(n - N)), k1 = Math.floor(n);
+      const pA = new Path2D(), pB = new Path2D(), pC = new Path2D();
+      for (let k = k1; k >= k0; k--) {
+        const age = n - k, r = c * Math.sqrt(age), th = k * GA - age * off + rot;
+        const s = c * .42 * Math.min(1, age / 4) * (1 - Math.max(0, (age / N - .85) / .15));
+        if (s <= .05) continue;
+        const x = cx + Math.cos(th) * r, y = cy + Math.sin(th) * r;
+        const path = k % 21 === 0 ? pB : k % 34 === 0 ? pC : pA;
+        path.moveTo(x + s, y); path.arc(x, y, s, 0, TAU);
+      }
+      g.fillStyle = 'rgba(236,228,214,.82)'; g.fill(pA);
+      g.fillStyle = '#ff6a4d'; g.fill(pB);
+      g.fillStyle = '#6a86ff'; g.fill(pC);
+    }
+  };
+}
+
+// ======================================================================
+// VIII. THREE BODIES — a perfect figure-eight dance between three suns.
+//       Order this perfect is fragile. Flick to throw another star.
+// ======================================================================
+function Bodies() {
+  const COL = ['255,106,77', '236,228,214', '96,126,255', '255,196,120', '176,146,255', '120,220,200'];
+  const EPS2 = .0025;
+  let B = [], sc = 1, port = true, cx = 0, cy = 0, born = 0, perturbed = false, lastN = 0;
+  function eight() {
+    const x = .97000436, y = -.24308753, vx = -.93240737, vy = -.86473146;
+    B = [{ x, y, vx: -vx / 2, vy: -vy / 2, m: 1, c: 0 }, { x: -x, y: -y, vx: -vx / 2, vy: -vy / 2, m: 1, c: 1 }, { x: 0, y: 0, vx, vy, m: 1, c: 2 }];
+    B.forEach(b => { b.sg = Math.sign(b.vx); b.px = null; });
+    born = T; perturbed = false;
+  }
+  function layout() { cx = W / 2; cy = H / 2; port = H > W; sc = port ? Math.min(H * .4 / 1.1, W * .4 / .45) : Math.min(W * .4 / 1.1, H * .4 / .45); B.forEach(b => b.px = null); }
+  const toS = b => port ? [cx - b.y * sc, cy + b.x * sc] : [cx + b.x * sc, cy + b.y * sc];
+  const toW = (x, y) => port ? [(y - cy) / sc, -(x - cx) / sc] : [(x - cx) / sc, (y - cy) / sc];
+  const velW = (dx, dy) => port ? [dy / sc, -dx / sc] : [dx / sc, dy / sc];
+  function add(x, y, vx, vy, m) {
+    if (B.length >= 6) return;
+    const [wx, wy] = toW(x, y), [wvx, wvy] = velW(vx, vy);
+    const used = new Set(B.map(b => b.c)); let c = 0; while (used.has(c)) c++;
+    B.push({ x: wx, y: wy, vx: wvx, vy: wvy, m, c, sg: Math.sign(wvx) || 1, px: null });
+    perturbed = true; born = T;
+    S.bell(scaleNote(50, c * 2 + 7), 0, .5); buzz(15);
+  }
+  function step(h) {
+    const n = B.length;
+    for (const b of B) { b.ax = 0; b.ay = 0; }
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const a = B[i], b = B[j], dx = b.x - a.x, dy = b.y - a.y, r2 = dx * dx + dy * dy + EPS2, inv = 1 / (r2 * Math.sqrt(r2));
+      a.ax += dx * inv * b.m; a.ay += dy * inv * b.m; b.ax -= dx * inv * a.m; b.ay -= dy * inv * a.m;
+    }
+    for (const b of B) { b.vx += b.ax * h; b.vy += b.ay * h; b.x += b.vx * h; b.y += b.vy * h; }
+  }
+  return {
+    dur: 60, hiddenTitle: 'three is already too many',
+    enter() { layout(); eight(); g.fillStyle = '#050407'; g.fillRect(0, 0, W, H); S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .3, 600); },
+    resize() { layout(); },
+    up(p) {
+      if (p.moved > 20) add(p.sx, p.sy, (p.x - p.sx) * .9, (p.y - p.sy) * .9, .5);
+      else add(p.x, p.y, 0, 0, .5);
+    },
+    dbl() { eight(); [0, 2, 4].forEach((k, i) => S.note(scaleNote(50, k), { g: .05, d: 3, at: i * .1 })); },
+    frame(dt) {
+      const steps = 30, h = dt * .95 / steps;
+      for (let s = 0; s < steps; s++) step(h);
+      // a visitor arrives if nobody disturbs the order
+      if (!perturbed && T - born > 28 && T - lastInput > 10) {
+        const a = rand(0, TAU), d = 3;
+        const [sx, sy] = toS({ x: Math.cos(a) * d, y: Math.sin(a) * d });
+        const [tx, ty] = toS({ x: 0, y: 0 });
+        add(sx, sy, (tx - sx) * .2, (ty - sy) * .2, .25);
+      }
+      let mx = 0, my = 0, M = 0; for (const b of B) { mx += b.x * b.m; my += b.y * b.m; M += b.m; } mx /= M; my /= M;
+      for (let i = B.length - 1; i >= 0; i--) if (Math.hypot(B[i].x - mx, B[i].y - my) > 5) { S.note(mtof(38), { g: .1, d: 2.5, glide: 1.5 }); B.splice(i, 1); }
+      if (B.length < 2 || (perturbed && T - born > 50)) { g.fillStyle = '#050407'; g.fillRect(0, 0, W, H); eight(); }
+      for (const b of B) {
+        const sg = Math.sign(b.vx) || 1;
+        if (sg !== b.sg) {
+          b.sg = sg;
+          if (T - lastN > .05) { lastN = T; S.note(scaleNote(50, b.c * 2 + (sg > 0 ? 0 : 5)), { type: 'triangle', g: .045, d: 1.6, pan: clamp(toS(b)[0] / W * 2 - 1, -1, 1) }); }
+        }
+      }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = 'rgba(5,4,7,.035)'; g.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
+      for (const b of B) {
+        const [sx, sy] = toS(b);
+        if (b.px !== null) { g.strokeStyle = `rgba(${COL[b.c]},.75)`; g.lineWidth = 1.5; g.beginPath(); g.moveTo(b.px, b.py); g.lineTo(sx, sy); g.stroke(); }
+        b.px = sx; b.py = sy;
+        g.fillStyle = `rgba(${COL[b.c]},.35)`; g.beginPath(); g.arc(sx, sy, 2 + b.m * 3, 0, TAU); g.fill();
+      }
+      g.globalCompositeOperation = 'source-over';
+    }
+  };
+}
+
+// ======================================================================
+// IX. BUTTERFLY — four hundred points, one ten-millionth apart.
+//     For a while they are one. Then they are everything.
+// ======================================================================
+function Butterfly() {
+  const NP = 420, SIG = 10, RHO = 28, BETA = 8 / 3;
+  let ps = [], phi = rand(0, TAU), vphi = 0, lastN = 0, born = 0, sc = 1;
+  const d = (x, y, z) => [SIG * (y - x), x * (RHO - z) - y, x * y - BETA * z];
+  function adv(p, h) {
+    const a = d(p[0], p[1], p[2]), b = d(p[0] + a[0] * h / 2, p[1] + a[1] * h / 2, p[2] + a[2] * h / 2);
+    p[0] += b[0] * h; p[1] += b[1] * h; p[2] += b[2] * h;
+  }
+  function seed(x, y, z) {
+    ps = [];
+    for (let i = 0; i < NP; i++) ps.push([x + rand(-1, 1) * 1e-7, y + rand(-1, 1) * 1e-7, z + rand(-1, 1) * 1e-7, Math.sign(x) || 1, 0, 0]);
+    born = T;
+  }
+  return {
+    dur: 60, hiddenTitle: 'a small difference',
+    enter() {
+      const q = [rand(-5, 5), rand(-5, 5), rand(15, 30)]; for (let i = 0; i < 3000; i++) adv(q, .005);
+      seed(q[0], q[1], q[2]);
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      S.drone([mtof(40), mtof(47), mtof(52), mtof(59)], .3, 650);
+    },
+    move(p) { vphi += p.dx * .0035; },
+    up(p) {
+      if (p.moved > 10) return;
+      let best = 0, bd = Infinity;
+      ps.forEach((q, i) => { const e = Math.hypot(q[4] - p.x, q[5] - p.y); if (e < bd) { bd = e; best = i; } });
+      const q = ps[best]; seed(q[0], q[1], q[2]); S.bell(scaleNote(52, 2), 0, .6); buzz(15);
+    },
+    frame(dt) {
+      const steps = 4, h = Math.min(dt, .05) * .62 / steps;
+      for (const p of ps) for (let s = 0; s < steps; s++) adv(p, h);
+      if (T - born > 42 && T - lastInput > 8) { const q = ps[Math.random() * NP | 0]; seed(q[0], q[1], q[2]); S.bell(scaleNote(52, 2), 0, .4); }
+      phi += .12 * dt + vphi; vphi *= Math.pow(.94, dt * 60);
+      sc = Math.min(W / 50, H / 62);
+      const cx = W / 2, cy = H / 2, c = Math.cos(phi), s = Math.sin(phi);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = 'rgba(5,4,7,.07)'; g.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'lighter';
+      g.fillStyle = 'rgba(236,228,214,.5)';
+      for (let i = 0; i < NP; i++) {
+        const p = ps[i], X = p[0] * c - p[1] * s;
+        p[4] = cx + X * sc; p[5] = cy - (p[2] - 24) * sc;
+        if (i > 1) g.fillRect(p[4] - .8, p[5] - .8, 1.6, 1.6);
+        if (i < 40) {
+          const sg = Math.sign(p[0]) || 1;
+          if (sg !== p[3]) {
+            p[3] = sg;
+            if (T - lastN > .045) { lastN = T; S.note(scaleNote(57, (i % 5) + (sg > 0 ? 5 : 0)), { g: .035, d: 1.4, pan: clamp(p[4] / W * 2 - 1, -1, 1) }); }
+          }
+        }
+      }
+      g.fillStyle = '#ff6a4d'; g.fillRect(ps[0][4] - 1.5, ps[0][5] - 1.5, 3, 3);
+      g.fillStyle = '#6a86ff'; g.fillRect(ps[1][4] - 1.5, ps[1][5] - 1.5, 3, 3);
+      g.globalCompositeOperation = 'source-over';
+    }
+  };
+}
+
+// ======================================================================
+// X. CHLADNI — sound has a shape. Sand flees the vibration
+//    and gathers where the plate is still.
+// ======================================================================
+function Chladni() {
+  let G = null, NG = 0, n = 2, m = 5, sg = 1, side = 0, ox = 0, oy = 0, amp = 1, lastMode = -99, cell = -1;
+  function layout() { side = Math.min(W, H) * .9; ox = (W - side) / 2; oy = (H - side) / 2; }
+  function mode(nn, mm) {
+    if (nn === mm) mm = nn + 1;
+    n = nn; m = mm; sg = Math.random() < .5 ? 1 : -1; amp = 2.4; lastMode = T;
+    const f = 55 * Math.sqrt(n * n + m * m);
+    S.note(f, { g: .07, a: .05, d: 5, wet: .7 }); S.note(f * 2.01, { g: .02, a: .05, d: 3 }); S.noise({ dur: .4, f: Math.min(8000, f * 4), q: 4, g: .03 });
+    buzz(12);
+  }
+  function touch(p) {
+    const u = (p.x - ox) / side, v = (p.y - oy) / side;
+    if (u < 0 || u > 1 || v < 0 || v > 1) return;
+    const c = Math.floor(u * 8) * 8 + Math.floor(v * 8);
+    if (c !== cell) { cell = c; mode(1 + Math.floor(u * 8), 1 + Math.floor(v * 8)); }
+  }
+  return {
+    dur: 55, hiddenTitle: 'the plate is still ringing',
+    enter() {
+      layout(); NG = Math.round(clamp(W * H / 70, 3000, 7000)); G = new Float32Array(NG * 2);
+      for (let i = 0; i < NG; i++) { G[2 * i] = ox + Math.random() * side; G[2 * i + 1] = oy + Math.random() * side; }
+      mode(1 + (Math.random() * 6 | 0), 2 + (Math.random() * 6 | 0));
+      S.drone([mtof(36), mtof(43), mtof(48), mtof(55)], .2, 500);
+    },
+    resize() { const os = side, oox = ox, ooy = oy; layout(); for (let i = 0; i < NG; i++) { G[2 * i] = ox + (G[2 * i] - oox) / os * side; G[2 * i + 1] = oy + (G[2 * i + 1] - ooy) / os * side; } },
+    down(p) { cell = -1; touch(p); },
+    move(p) { touch(p); },
+    frame(dt) {
+      amp = lerp(amp, 1, 1 - Math.exp(-dt * .6));
+      if (T - lastMode > 8 && !P.size) mode(1 + (Math.random() * 8 | 0), 1 + (Math.random() * 8 | 0));
+      const k = side * .018 * amp * Math.min(2, dt * 60), PI = Math.PI, x1 = ox + side, y1 = oy + side;
+      for (let i = 0; i < NG; i++) {
+        let x = G[2 * i], y = G[2 * i + 1];
+        const u = (x - ox) / side, v = (y - oy) / side;
+        const a = Math.abs(Math.cos(n * PI * u) * Math.cos(m * PI * v) - sg * Math.cos(m * PI * u) * Math.cos(n * PI * v));
+        x += (Math.random() - .5) * a * k; y += (Math.random() - .5) * a * k;
+        G[2 * i] = x < ox ? ox : x > x1 ? x1 : x; G[2 * i + 1] = y < oy ? oy : y > y1 ? y1 : y;
+      }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      g.fillStyle = '#0f0d15'; g.fillRect(ox, oy, side, side);
+      g.strokeStyle = 'rgba(236,228,214,.1)'; g.lineWidth = 1; g.strokeRect(ox - .5, oy - .5, side + 1, side + 1);
+      g.fillStyle = 'rgba(236,228,214,.85)';
+      for (let i = 0; i < NG; i++) g.fillRect(G[2 * i] - .7, G[2 * i + 1] - .7, 1.4, 1.4);
+    }
+  };
+}
+
+// ======================================================================
+// XI. EPICYCLES — anything can be built from circles turning on circles.
+//     Draw something. It will be remembered as circles, and as sound.
+// ======================================================================
+function Epicycles() {
+  const N = 128, FIB = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 128];
+  let coef = [], fi = 0, tt = 0, trail = [], drawing = null, hum = null, shape = [], held = 0;
+  function resample(pts) {
+    const L = [0];
+    for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const tot = L[L.length - 1] || 1, out = []; let j = 0;
+    for (let i = 0; i < N; i++) {
+      const s = tot * i / N; while (j < L.length - 2 && L[j + 1] < s) j++;
+      const k = (s - L[j]) / ((L[j + 1] - L[j]) || 1);
+      out.push([lerp(pts[j][0], pts[j + 1][0], k), lerp(pts[j][1], pts[j + 1][1], k)]);
+    }
+    return out;
+  }
+  function blob() {
+    const a = [], ph = [], pts = [];
+    for (let k = 2; k <= 7; k++) { a[k] = rand(0, .5) / k; ph[k] = rand(0, TAU); }
+    for (let i = 0; i < N; i++) { const th = i / N * TAU; let r = 1; for (let k = 2; k <= 7; k++) r += a[k] * Math.cos(k * th + ph[k]); pts.push([Math.cos(th) * r, Math.sin(th) * r]); }
+    return pts;
+  }
+  function setPath(pts) {
+    if (pts.length < 2) return;
+    const r = resample(pts); let mx = 0, my = 0;
+    r.forEach(p => { mx += p[0]; my += p[1]; }); mx /= N; my /= N;
+    let ext = 1e-6; r.forEach(p => { ext = Math.max(ext, Math.abs(p[0] - mx) / (W * .42), Math.abs(p[1] - my) / (H * .34)); });
+    const f = 1 / ext;
+    coef = [];
+    for (let k = -N / 2; k < N / 2; k++) {
+      let re = 0, im = 0;
+      for (let t = 0; t < N; t++) {
+        const x = (r[t][0] - mx) * f, y = (r[t][1] - my) * f, a = -TAU * k * t / N, c = Math.cos(a), s = Math.sin(a);
+        re += x * c - y * s; im += x * s + y * c;
+      }
+      coef.push({ k, amp: Math.hypot(re, im) / N, ph: Math.atan2(im, re) });
+    }
+    coef.sort((a, b) => b.amp - a.amp);
+    shape = r.map(p => [(p[0] - mx) * f, (p[1] - my) * f]);
+    fi = 0; tt = 0; trail = []; held = 0;
+    if (hum) hum.stop();
+    const top = coef.filter(c => c.k !== 0 && Math.abs(c.k) <= 24).slice(0, 8), mxA = top.length ? top[0].amp : 1;
+    hum = S.partials(top.map(c => ({ f: 55 * Math.abs(c.k), g: .05 * c.amp / mxA, pan: Math.sign(c.k) * .5 })));
+  }
+  function pickShape() {
+    if (pastStrokes.length && Math.random() < .6) setPath(pastStrokes[Math.random() * pastStrokes.length | 0].map(p => [p[0] * W, p[1] * H]));
+    else setPath(blob());
+  }
+  return {
+    dur: 60, hiddenTitle: 'everything is circles',
+    enter() { pickShape(); S.drone([mtof(33), mtof(40), mtof(45), mtof(52)], .2, 500); },
+    exit() { if (hum) hum.stop(); hum = null; },
+    down(p) { drawing = [[p.x, p.y]]; },
+    move(p) { if (drawing && drawing.length < 600) drawing.push([p.x, p.y]); },
+    up() {
+      if (drawing && drawing.length > 8) { setPath(drawing); S.bell(scaleNote(57, 0), 0, .5); }
+      drawing = null;
+    },
+    frame(dt) {
+      tt += dt * TAU / 8;
+      if (tt >= TAU) {
+        tt -= TAU;
+        if (fi < FIB.length - 1) { fi++; S.note(scaleNote(57, fi), { g: .04, d: 2 }); }
+        else if (++held > 2 && !drawing) pickShape();
+      }
+      const cx = W / 2, cy = H / 2, K = Math.min(FIB[fi], coef.length);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      if (shape.length) {
+        g.strokeStyle = 'rgba(236,228,214,.07)'; g.lineWidth = 1; g.beginPath();
+        shape.forEach((p, i) => i ? g.lineTo(cx + p[0], cy + p[1]) : g.moveTo(cx + p[0], cy + p[1])); g.closePath(); g.stroke();
+      }
+      let x = cx, y = cy;
+      const circ = new Path2D(), arms = new Path2D();
+      for (let j = 0; j < K; j++) {
+        const c = coef[j], a = c.k * tt + c.ph, nx = x + c.amp * Math.cos(a), ny = y + c.amp * Math.sin(a);
+        if (c.amp > .6) { circ.moveTo(x + c.amp, y); circ.arc(x, y, c.amp, 0, TAU); }
+        arms.moveTo(x, y); arms.lineTo(nx, ny); x = nx; y = ny;
+      }
+      g.strokeStyle = 'rgba(236,228,214,.12)'; g.stroke(circ);
+      g.strokeStyle = 'rgba(236,228,214,.45)'; g.stroke(arms);
+      trail.push([x, y]); if (trail.length > 520) trail.shift();
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      for (let i = 1; i < trail.length; i++) {
+        g.strokeStyle = `rgba(255,106,77,${i / trail.length})`; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(trail[i - 1][0], trail[i - 1][1]); g.lineTo(trail[i][0], trail[i][1]); g.stroke();
+      }
+      g.fillStyle = '#fff3e8'; g.beginPath(); g.arc(x, y, 2.5, 0, TAU); g.fill();
+      if (drawing) {
+        g.strokeStyle = 'rgba(236,228,214,.9)'; g.lineWidth = 2; g.beginPath();
+        drawing.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke();
+      }
+    }
+  };
+}
+
+// ======================================================================
+// XII. RELATIVITY — time runs slower near anything heavy.
+//      Your finger is heavy. The clocks never forget what they lost.
+// ======================================================================
+function Relativity() {
+  let C = [], sp = 0, R = 0, lastTick = 0;
+  function layout() {
+    sp = Math.min(W, H) / 6;
+    const cols = Math.max(3, Math.floor(W / sp)), rows = Math.max(3, Math.floor(H / sp));
+    const ox = (W - (cols - 1) * sp) / 2, oy = (H - (rows - 1) * sp) / 2, old = C;
+    C = [];
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const o = old[C.length]; C.push({ bx: ox + i * sp, by: oy + j * sp, tau: o ? o.tau : 0, x: 0, y: 0, rate: 1 }); }
+    C.cols = cols; C.rows = rows; R = sp * .34;
+  }
+  return {
+    dur: 60, hiddenTitle: 'time is passing differently here',
+    enter() { layout(); S.drone([mtof(35), mtof(42), mtof(47), mtof(54)], .25, 500); },
+    resize() { layout(); },
+    dbl() {
+      let mx = 0; for (const c of C) mx = Math.max(mx, c.tau);
+      const t = Math.ceil(mx / TAU) * TAU; for (const c of C) c.tau = t - 1e-6;
+      S.bell(mtof(57), 0, .6);
+    },
+    frame(dt) {
+      const masses = [...P.values()].map(p => ({ x: p.x, y: p.y, s: 1 }));
+      masses.push({ x: W / 2 + Math.sin(T * .11) * W * .62, y: H / 2 + Math.sin(T * .07 + 1) * H * .55, s: .7 });
+      const rs = sp * 1.3;
+      let ticks = 0;
+      for (const c of C) {
+        let phi = 0, dx = 0, dy = 0;
+        for (const m of masses) {
+          const ex = m.x - c.bx, ey = m.y - c.by, d = Math.hypot(ex, ey) + 1;
+          phi += m.s * rs / (d + rs * .5) * .6;
+          const pull = m.s * Math.min(d * .5, rs * rs * .35 / (d + rs));
+          dx += ex / d * pull; dy += ey / d * pull;
+        }
+        c.rate = Math.sqrt(Math.max(.0016, 1 - Math.min(.9984, phi)));
+        const prev = c.tau; c.tau += dt * c.rate * TAU / 4;
+        if (Math.floor(c.tau / TAU) !== Math.floor(prev / TAU)) ticks++;
+        c.x = c.bx + dx; c.y = c.by + dy;
+      }
+      if (ticks && T - lastTick > .03) {
+        lastTick = T;
+        S.noise({ dur: .025, f: 3200, q: 6, g: Math.min(.06, .012 * Math.sqrt(ticks)), wet: .3 });
+        if (ticks > C.length * .5) S.note(mtof(69), { g: .04, d: .6 });
+      }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      g.strokeStyle = 'rgba(236,228,214,.07)'; g.lineWidth = 1; g.beginPath();
+      for (let j = 0; j < C.rows; j++) for (let i = 0; i < C.cols; i++) { const c = C[j * C.cols + i]; i ? g.lineTo(c.x, c.y) : g.moveTo(c.x, c.y); }
+      for (let i = 0; i < C.cols; i++) for (let j = 0; j < C.rows; j++) { const c = C[j * C.cols + i]; j ? g.lineTo(c.x, c.y) : g.moveTo(c.x, c.y); }
+      g.stroke();
+      g.lineCap = 'round';
+      for (const c of C) {
+        const r = c.rate, col = `${lerp(255, 236, r) | 0},${lerp(90, 228, r) | 0},${lerp(60, 214, r) | 0}`;
+        g.strokeStyle = `rgba(${col},.3)`; g.lineWidth = 1;
+        g.beginPath(); g.arc(c.x, c.y, R, 0, TAU); g.stroke();
+        g.fillStyle = `rgba(${col},.5)`; g.fillRect(c.x - .8, c.y - R + 2, 1.6, 2.4);
+        const a = c.tau - Math.PI / 2;
+        g.strokeStyle = `rgba(${col},.95)`; g.lineWidth = 1.6;
+        g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(c.x + Math.cos(a) * R * .82, c.y + Math.sin(a) * R * .82); g.stroke();
+      }
+    }
+  };
+}
+
+// ======================================================================
 // conductor
 // ======================================================================
-const MOVES = [Shy, Unbreaking, Cave, Asemic, Droste, Absence];
+const MOVES = [Shy, Unbreaking, Cave, Asemic, Droste, Absence, Sunflower, Bodies, Butterfly, Chladni, Epicycles, Relativity];
 const TITLE = 'Confused & Amused';
 let T = 0, last = performance.now(), started = false, ign = -1;
 let cur = null, curI = -1, nextI = -1, phase = 'idle', fade = 0, mStart = 0, lastInput = 0, lastDown = { t: -9, x: 0, y: 0 };
 let order = [], oi = 0;
 function nextIdx() {
   if (oi >= order.length) {
-    order = shuffle(curI === 0 && !order.length ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5]);
+    const all = [...MOVES.keys()];
+    order = shuffle(curI === 0 && !order.length ? all.slice(1) : all);
     if (order[0] === curI) order.push(order.shift());
     oi = 0;
   }
@@ -1117,8 +1536,8 @@ function enterMove(i) {
 function go(i) { if (phase === 'out' || !started) return; nextI = i; phase = 'out'; }
 function begin(i) { started = true; enterMove(i); phase = 'in'; fade = 1; document.getElementById('nx').classList.add('on'); document.getElementById('sd').classList.add('on'); }
 
-const hashM = /^#m([0-5])$/.exec(location.hash);
-if (hashM) { begin(+hashM[1]); }
+const hashM = /^#m(\d{1,2})$/.exec(location.hash);
+if (hashM && +hashM[1] < MOVES.length) { begin(+hashM[1]); }
 
 function ignite() {
   if (ign >= 0 || started) return;
