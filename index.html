@@ -37,6 +37,7 @@
   #sd .x{opacity:0;transition:opacity .3s}
   @keyframes spin{to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion:reduce){#nx svg{animation:none}}
+  body.desk.idle, body.desk.idle canvas{cursor:none}
   noscript{position:fixed;inset:0;display:grid;place-items:center;color:#ece4d6;font:italic 20px Georgia,serif}
 </style>
 </head>
@@ -174,6 +175,7 @@ function useCoords(pos) {
   CTX.lat = +pos.coords.latitude.toFixed(2); CTX.lon = +pos.coords.longitude.toFixed(2);
   CTX.approx = false; CTX.south = CTX.lat < 0;
   CTX.placeSeed = (Math.round((CTX.lat + 90) * 100) * 73856093 ^ Math.round((CTX.lon + 180) * 100) * 19349663) | 0;
+  if (typeof fetchPlace === 'function') fetchPlace();
   if (typeof cur !== 'undefined' && cur && cur.located) cur.located();
 }
 function askLocation() {
@@ -414,7 +416,8 @@ function Shy() {
   let sleeping = false, lull = 0, wk = 0, wkT = -1;
   const HR = new Date().getHours(), NIGHT = HR >= 22 || HR < 5;
   const E = { cx: 0, cy: 0, w: 0, h: 0, R: 0, gx: 0, gy: 0, bl: 1, nb: 0, bt: -1 };
-  const F = [.0034 * rand(.6, 1.5), .0041 * rand(.6, 1.5), .0021 * rand(.6, 1.6)], EH = rand(.4, .53);
+  const RR = LIVE.rnd ? rng(LIVE.rnd) : Math.random, rr2 = (a, b) => a + RR() * (b - a);   // seeded by atmospheric noise when random.org answers
+  const F = [.0034 * rr2(.6, 1.5), .0041 * rr2(.6, 1.5), .0021 * rr2(.6, 1.6)], EH = rr2(.4, .53);
   function layout() {
     E.cx = W / 2; E.cy = H * .46; E.w = Math.min(W * .43, H * .32); E.h = E.w * EH; E.R = E.h * .9;
     if (!E.gx) { E.gx = E.cx; E.gy = E.cy; }
@@ -522,7 +525,7 @@ function Shy() {
       g.globalCompositeOperation = 'lighter';
       const k = clamp(ts, 0, 1);
       const cA = `rgb(${lerp(110, 238, k) | 0},${lerp(132, 228, k) | 0},${lerp(190, 212, k) | 0})`;
-      const cB = `rgb(255,${lerp(150, 98, k) | 0},${lerp(180, 62, k) | 0})`;
+      const cB = THEME.cols ? THEME.cols[0] : `rgb(255,${lerp(150, 98, k) | 0},${lerp(180, 62, k) | 0})`;
       const step = Math.min(3, ts * dt * 60);
       const fs = [...P.values()], FR = Math.min(W, H) * .28, FR2 = FR * FR, GR2 = 95 * 95;
       const bl = E.bl, w = E.w, h = E.h, R = E.R;
@@ -560,6 +563,14 @@ function Shy() {
       if (oe > .85 && bl > .6) {
         g.globalAlpha = (oe - .85) / .15 * .45; g.fillStyle = '#fff';
         g.beginPath(); g.arc(E.gx - R * .27, E.gy - R * .3, R * .065, 0, TAU); g.fill();
+      }
+      // on the day of a solar eclipse, the moon passes over the eye
+      if (DAY.solarEclipse && oe > .7) {
+        const a = (oe - .7) / .3, rg = g.createRadialGradient(E.gx, E.gy, R * .8, E.gx, E.gy, R * 1.5);
+        rg.addColorStop(0, `rgba(255,240,220,${.5 * a})`); rg.addColorStop(1, 'rgba(255,240,220,0)');
+        g.globalAlpha = 1; g.fillStyle = rg; g.beginPath(); g.arc(E.gx, E.gy, R * 1.5, 0, TAU); g.fill();
+        g.globalCompositeOperation = 'source-over'; g.fillStyle = `rgba(5,4,7,${a})`; g.beginPath(); g.arc(E.gx, E.gy, R * .92, 0, TAU); g.fill();
+        g.globalCompositeOperation = 'lighter'; if (a > .9) found('eclipse');
       }
       g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
     }
@@ -694,6 +705,9 @@ function Unbreaking() {
     },
     frame(dt) {
       const d60 = dt * 60, damp = Math.pow(.9, d60);
+      // somewhere a new block of the Bitcoin chain was just made whole; so is a vessel
+      poll('block', 'https://mempool.space/api/blocks/tip/height', 60, h => { if (LIVE.block && h > LIVE.block) LIVE.newBlock = true; LIVE.block = h; });
+      if (LIVE.newBlock) { LIVE.newBlock = false; const o = objs.find(o => o.state === 'debris'); if (o) { lastAct = T; gather(o, rand(W * .3, W * .7), rand(H * .3, H * .7)); } }
       if (T - lastAct > 8) {
         const o = objs.find(o => o.state === 'debris');
         if (o) { lastAct = T; gather(o, rand(W * .3, W * .7), rand(H * .3, H * .7)); }
@@ -717,7 +731,7 @@ function Unbreaking() {
           }
           if (o.t >= TT) { o.state = 'whole'; o.t = 0; rings.push({ x: o.ax, y: o.ay, t: 0 }); buzz(25); for (const s of o.sh) { s.x = s.ex; s.y = s.ey; s.r = 0; } }
         } else if (o.state === 'whole') {
-          if (o.t > 5.5) shatter(o);
+          if (o.t > (DAY.fri13 ? 1.3 : 5.5)) shatter(o);
         } else if (o.state === 'frozen') {
           for (const s of o.sh) { s.r += .003 * d60; s.x += Math.sin(T * .7 + s.hx) * .04 * d60; s.y += Math.cos(T * .6 + s.hy) * .04 * d60; }
           if (o.t > 4) { S.cut(1200, .8); gather(o, o.ax, o.ay); }
@@ -735,6 +749,9 @@ function Unbreaking() {
       }
       g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
       g.drawImage(paper(), 0, 0, W, H);
+      if (LIVE.ice) {   // a floe of white, as large as the real sea ice is now compared with the same month in 1979
+        g.fillStyle = 'rgba(255,255,255,.5)'; g.beginPath(); g.ellipse(W / 2, H * .06, W * .42 * LIVE.ice, H * .035, 0, 0, TAU); g.fill();
+      }
       g.fillStyle = 'rgba(70,50,30,.13)'; g.beginPath();
       for (const o of objs) for (const s of o.sh) addTri(g, s, 1.6, 2.4);
       g.fill();
@@ -869,6 +886,7 @@ function Cave() {
       S.drone([mtof(33), mtof(40), mtof(45), mtof(52)], .45, 520);
     },
     move(p) { vX += p.dx * .0035; vY += p.dy * .0035; },
+    wheel(d, e) { vY += d * .0005; vX += (e.deltaX || 0) * .0005; },
     up(p) {
       if (p.moved < 10 && !figGone && leaving < 0 && figH && Math.abs(p.x - figX) < figH * .7 && p.y > figY - figH * 1.3 && p.y < figY + 14) {
         leaving = 0; found('figure'); S.note(mtof(64), { g: .04, d: 2 }); S.note(mtof(59), { g: .03, d: 2, at: .4 }); return;
@@ -884,6 +902,7 @@ function Cave() {
       const dk = Math.pow(.94, d60); vX *= dk; vY *= dk;
       if (fc % 90 === 0) ortho4(M);
       glow = lerp(glow, 1, 1 - Math.exp(-dt * 2));
+      if (LIVE.flare && /^[MX]/.test(LIVE.flare) && Math.random() < dt * .12) glow = LIVE.flare[0] === 'X' ? 5 : 3;
       if (T - lastSwitch > 24) next();
       if (mix < 1) mix = Math.min(1, mix + dt / 1.6);
 
@@ -900,7 +919,7 @@ function Cave() {
       if (mix < 1 && pi >= 0) project(objs[pi], cx, cy, Sc);
       // shadow on the floor
       const fh = H - floorY;
-      g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 1.4; g.beginPath();
+      g.strokeStyle = `rgba(0,0,0,${SUN.noon ? 0 : .55})`; g.lineWidth = 1.4; g.beginPath();
       for (const [a, b] of cur.e) {
         g.moveTo(cx + cur.x3[a] * Sc * .9, floorY + fh * .45 + cur.z3[a] * fh * .22);
         g.lineTo(cx + cur.x3[b] * Sc * .9, floorY + fh * .45 + cur.z3[b] * fh * .22);
@@ -940,12 +959,14 @@ function Asemic() {
     it: ['stanotte la luna è piena', 'stanotte non c’è la luna'],
   };
   let MOONDAY = false;
+  const ERASED = { en: 'again', es: 'otra vez', fr: 'encore', de: 'nochmal', pt: 'de novo', it: 'ancora' };
   {
     const ph = sky().phase, mm = MOONS[CTX.lang] || MOONS.en, k = Math.abs(ph - .5) < .03 ? 0 : (ph < .03 || ph > .97) ? 1 : -1;
     if (k >= 0) { SENT.unshift(mm[k].split(' ')); MOONDAY = true; found(k ? 'newmoon' : 'fullmoon'); }
   }
   let ink, ix, tmp, tx, sm, smx, gh, lineH, mg, glyphs;
   let pen = { q: [], cur: null, ci: 0, wait: .8, nx: -99, ny: -99 }, L = { x: 0, y: 0 };
+  let forced = null, smear = {}, erased = false;
   let words = 0, nextReal = 3, si = MOONDAY ? 0 : Math.random() * SENT.length | 0, wi = 0, fades = [], scroll = 0, real = null;
   function setup(keep) {
     const old = ink;
@@ -995,8 +1016,9 @@ function Asemic() {
     L.y -= s; pen.ny -= s;
   }
   function realWord() {
-    const S0 = SENT[si], word = S0[wi]; wi++;
-    if (wi >= S0.length) { wi = 0; si = (si + 1) % SENT.length; }
+    const S0 = SENT[si]; let word;
+    if (forced) { word = forced; forced = null; }
+    else { word = S0[wi]; wi++; if (wi >= S0.length) { wi = 0; si = (si + 1) % SENT.length; } }
     const fs = gh * 1.3, font = `italic 500 ${fs}px "Cormorant Garamond", Georgia, serif`;
     g.font = font; const w = Math.ceil(g.measureText(word).width) + 4;
     if (L.x + w > W - mg) newline();
@@ -1029,6 +1051,16 @@ function Asemic() {
     },
     resize() { setup(true); },
     move(p) {
+      const band = Math.floor(p.y / lineH);
+      smear[band] = (smear[band] || 0) + Math.abs(p.dx);
+      if (!erased && smear[band] > W * 2.2) {
+        erased = true; found('erase');
+        ix.globalCompositeOperation = 'destination-out'; ix.fillRect(0, band * lineH - lineH * .3, W, lineH * 1.2); ix.globalCompositeOperation = 'source-over';
+        if (real) real = null;
+        pen.q = []; pen.cur = null; pen.wait = .9; L.x = mg; L.y = band * lineH + lineH * .7;
+        forced = ERASED[CTX.lang] || ERASED.en; nextReal = words + 1;
+        S.note(scaleNote(57, 4), { g: .05, d: 3, a: .4 });
+      }
       const r = sm.width / DPR / 2, D = DPR;
       smx.globalCompositeOperation = 'copy';
       smx.drawImage(ink, (p.px - r) * D, (p.py - r) * D, 2 * r * D, 2 * r * D, 0, 0, sm.width, sm.height);
@@ -1052,6 +1084,10 @@ function Asemic() {
       }
     },
     frame(dt) {
+      if (LIVE.wx && LIVE.wx.rain && Math.random() < dt * 6 * LIVE.wx.rain) {   // it is raining where you are: the ink runs
+        const x = rand(mg, W - mg), y = rand(mg, H - mg);
+        ix.globalAlpha = .5; ix.drawImage(ink, x * DPR, y * DPR, 2 * DPR, 10 * DPR, x, y + 2, 2, 10); ix.globalAlpha = 1;
+      }
       if (scroll > 0) {
         const sd = Math.min(Math.round(scroll * DPR), Math.max(1, Math.round(110 * dt * DPR))), s = sd / DPR;
         tx.globalCompositeOperation = 'copy'; tx.drawImage(ink, 0, 0);
@@ -1110,7 +1146,7 @@ function Asemic() {
 // ======================================================================
 function Droste() {
   const ZB = rand(.968, .984), RS = (Math.random() < .5 ? 1 : -1) * rand(.5, 1.6);
-  let fb, fx, tb, tbx, z = ZB, hue = new Date().getHours() * 15 + rand(0, 40), holdT = 0, ha = { x: 0, y: 0 }, voice = null, wasRev = false, fell = false;
+  let fb, fx, tb, tbx, z = ZB, hue = LIVE.art ? LIVE.art.h : new Date().getHours() * 15 + rand(0, 40), holdT = 0, ha = { x: 0, y: 0 }, voice = null, wasRev = false, fell = false;
   const prev = new Map(), ghost = new Ghost();
   function setup() {
     fb = mk(W, H); fx = fb.getContext('2d'); tb = mk(fb.width, fb.height); tbx = tb.getContext('2d');
@@ -1132,6 +1168,7 @@ function Droste() {
     enter() { setup(); S.drone([mtof(36), mtof(43), mtof(48), mtof(55)], .35, 800); },
     resize() { setup(); },
     exit() { if (voice) voice.end(); voice = null; },
+    wheel(d) { z = clamp(z + d * .0004, .9, 1.08); },
     shake(k) { z = 1.06 + .02 * k; hue += 120; S.bell(mtof(43), 0, .7); },
     down(p) {
       holdT = T; ha = { x: p.x, y: p.y }; prev.set(p.id, { x: p.x, y: p.y });
@@ -1145,7 +1182,7 @@ function Droste() {
       const touching = P.size > 0, rev = touching && T - holdT > .75;
       if (rev !== wasRev) { wasRev = rev; if (rev) { S.bell(mtof(36), 0, .6); buzz(20); } }
       z = lerp(z, rev ? 1.03 : ZB, 1 - Math.exp(-dt * 3));
-      const zz = Math.pow(z, dt * 60), rr = (.0028 * RS + TILT.x * .014) * dt * 60;
+      const zz = Math.pow(z, dt * 60), rr = (.0028 * RS * (1 + (LIVE.wx ? LIVE.wx.wind / 30 : 0)) + TILT.x * .014) * dt * 60;
       const cx = W / 2 + TILT.x * W * .12, cy = H / 2 + TILT.y * H * .12;
       const f1 = P.size === 1 ? P.values().next().value : null;
       if (f1 && rev && !fell && T - holdT > 3.2 && Math.hypot(f1.x - cx, f1.y - cy) < 30 && phase === 'idle') {
@@ -1193,14 +1230,14 @@ const SEASON_COLS = [
   ['#7fc97a', '#b7e08a', '#f3e9dc', '#ffd36b'],  // summer: leaf
   ['#ff6a3d', '#e8a23a', '#c24a2a', '#ffb36b'],  // autumn: turning
 ];
-function buildTree(seed, COLS = SEASON_COLS[1]) {
+function buildTree(seed, COLS = SEASON_COLS[1], TRI = .28) {
   const r = rng(seed), bs = [], sz = COLS === SEASON_COLS[0] ? .6 : 1;
   function add(p, d, a, len, birth) {
     const dur = d === 0 ? 1.3 : .95 * Math.pow(.93, d) * (.8 + r() * .4);
     const b = { p, d, a, len, birth, dur, kids: 0, bsz: (1.6 + r() * 3) * sz, col: r() * COLS.length | 0, fallen: false, x0: 0, y0: 0, x1: 0, y1: 0, abs: 0, vis: false };
     const i = bs.length; bs.push(b);
     if (d < 9 && !(d > 3 && r() < .1)) {
-      const n = d < 1 ? 2 : (d < 6 && r() < .28 ? 3 : 2), spread = .35 + r() * .35;
+      const n = d < 1 ? 2 : (d < 6 && r() < TRI ? 3 : 2), spread = .35 + r() * .35;
       for (let k = 0; k < n; k++) {
         const a2 = n === 2 ? (k ? 1 : -1) * spread * (.7 + r() * .6) : (k - 1) * spread * (.9 + r() * .3);
         add(i, d + 1, a2 + (r() - .5) * .15, len * (.68 + r() * .14), birth + dur);
@@ -1220,7 +1257,8 @@ function Absence() {
     g.fillStyle = 'rgba(244,236,220,.08)'; g.beginPath(); g.arc(x, y, r * 3, 0, TAU); g.fill();
     g.fillStyle = 'rgba(40,38,48,.85)'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
     const side = (ph < .5 ? 1 : -1) * (CTX.south ? -1 : 1), k = Math.cos(ph * TAU), bulge = k > 0 ? side : -side;
-    g.fillStyle = 'rgba(244,236,220,.95)'; g.beginPath();
+    g.fillStyle = DAY.lunarEclipse ? 'rgba(205,80,55,.95)' : 'rgba(244,236,220,.95)'; g.beginPath();
+    if (DAY.lunarEclipse) found('bloodmoon');
     g.arc(x, y, r, -Math.PI / 2, Math.PI / 2, side < 0);
     g.ellipse(x, y, Math.max(.01, Math.abs(k) * r), r, 0, Math.PI / 2, -Math.PI / 2, bulge > 0);
     g.fill();
@@ -1228,12 +1266,23 @@ function Absence() {
   function drawSky(dt, horizonY) {
     if (T - skT > 2) { skT = T; SK = sky(); }
     const sa = SK.sun[0] / RAD;
-    const night = clamp((-sa - 4) / 10, 0, 1), day = clamp(sa / 12, 0, 1), tw = clamp((sa + 18) / 18, 0, 1);
+    const night = clamp((-sa - 4) / 10, 0, 1) * (LIVE.wx ? 1 - LIVE.wx.cloud * .85 : 1) * (LIVE.elev > 1500 ? 1.2 : 1), day = clamp(sa / 12, 0, 1), tw = clamp((sa + 18) / 18, 0, 1);
     const mix = (a, b, t) => a.map((v, i) => Math.round(lerp(v, b[i], t)));
     const top = mix(mix([5, 4, 7], [18, 22, 52], tw), [44, 66, 118], day), bot = mix(mix([10, 8, 18], [150, 80, 62], tw), [128, 150, 190], day);
     const gr = g.createLinearGradient(0, 0, 0, horizonY);
     gr.addColorStop(0, `rgb(${top})`); gr.addColorStop(1, `rgb(${bot})`);
     g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    // the northern (or southern) lights: high latitudes, or a strong geomagnetic storm
+    const au = Math.min(1, (Math.abs(CTX.lat) > 55 ? .5 : 0) + (LIVE.kp ? clamp((LIVE.kp - 4) / 4, 0, 1) * (Math.abs(CTX.lat) > 40 ? 1 : .3) : 0)) * Math.min(1, night);
+    if (au > .02) {
+      g.globalCompositeOperation = 'lighter';
+      for (let b = 0; b < 3; b++) for (let x = 0; x < W; x += 5) {
+        const y = H * (.14 + b * .07) + Math.sin(x * .008 + T * .25 + b * 2) * H * .04, hh = H * (.1 + .06 * Math.sin(x * .02 + T * .6 + b));
+        g.fillStyle = `rgba(${b === 2 ? '170,110,255' : '90,255,170'},${au * .05 * (.5 + .5 * Math.sin(x * .03 + T + b))})`; g.fillRect(x, y - hh, 4, hh);
+      }
+      g.globalCompositeOperation = 'source-over';
+      if (au > .3) found('aurora');
+    }
     // where are we looking? the compass if the phone has one, otherwise toward the celestial equator
     const target = CTX.heading != null ? CTX.heading : (CTX.south ? 0 : Math.PI) + TILT.x * .8;
     const d = ((target - az0 + Math.PI) % TAU + TAU) % TAU - Math.PI; az0 += d * (1 - Math.exp(-dt * 2));
@@ -1246,6 +1295,16 @@ function Absence() {
       const k = 2 / (1 + vc);
       return [W / 2 + k * (vx * h[1] - vy * h[0]) * f, cy0 - k * (vz * ca0 - vh * sa0) * f];
     };
+    // the International Space Station, when it is really above you
+    poll('iss', 'https://api.wheretheiss.at/v1/satellites/25544', 12, j => {
+      const pr = LIVE.iss;
+      LIVE.iss = { lat: j.latitude, lon: j.longitude, alt: j.altitude, t: Date.now(), plat: pr ? pr.lat : j.latitude, plon: pr ? pr.lon : j.longitude, pt: pr ? pr.t : Date.now() - 12000 };
+    });
+    const isn = issNow();
+    if (isn) {
+      const [ia, iz] = satAltAz(isn[0], isn[1], isn[2]);
+      if (ia > .05) { const p = proj(ia, iz); if (p) { g.fillStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.arc(p[0], p[1], 6, 0, TAU); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(p[0], p[1], 1.8, 0, TAU); g.fill(); if (!SESSION.iss) { SESSION.iss = true; found('iss'); } } }
+    }
     if (sa > -8) {
       const p = proj(Math.max(SK.sun[0], -.02), SK.sun[1]);
       if (p) {
@@ -1275,19 +1334,29 @@ function Absence() {
     moonP = null;
     if (SK.moon[0] > 0) { const p = proj(SK.moon[0], SK.moon[1]); if (p) { moonP = p; drawMoon(p[0], p[1], Math.min(W, H) * .025, SK.phase); } }
     // the ledger: one gold star for each thing ever found, one pale star for each wish
+    // the secrets you can find by doing something sit on a hidden constellation; the rest are scattered
     Object.keys(MEM.found).forEach((id, i) => {
-      let hs = 7; for (const ch of id) hs = (hs * 31 + ch.charCodeAt(0)) | 0;
-      const r = rng(hs), x = (.05 + r() * .9) * W, y = (.04 + r() * .5) * H, a = (.6 + .4 * Math.sin(T * 1.3 + i)) * Math.max(.35, night);
+      const di = DOABLE.indexOf(id); let x, y;
+      if (di >= 0) [x, y] = eyePt(di);
+      else { let hs = 7; for (const ch of id) hs = (hs * 31 + ch.charCodeAt(0)) | 0; const r = rng(hs); x = (.05 + r() * .9) * W; y = (.33 + r() * .24) * H; }
+      const a = (.6 + .4 * Math.sin(T * 1.3 + i)) * Math.max(.35, night);
       g.fillStyle = `rgba(255,207,107,${a * .22})`; g.beginPath(); g.arc(x, y, 6, 0, TAU); g.fill();
       g.fillStyle = `rgba(255,214,130,${a})`; g.beginPath(); g.arc(x, y, 1.8, 0, TAU); g.fill();
     });
+    if (allDoable()) {   // every one found: the stars join, and it is the eye
+      const ep = DOABLE.map((_, i) => eyePt(i));
+      g.strokeStyle = `rgba(255,207,107,${.35 * Math.max(.4, night)})`; g.lineWidth = 1; g.beginPath();
+      for (let i = 0; i <= 12; i++) { const q = ep[i % 12]; i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }
+      g.moveTo(ep[12][0], ep[12][1]); g.lineTo(ep[13][0], ep[13][1]); g.lineTo(ep[14][0], ep[14][1]); g.closePath(); g.stroke();
+      if (!MEM.found.constellation) found('constellation');
+    }
     const rw = rng(4242);
     for (let i = 0; i < Math.min(MEM.wishes, 60); i++) {
       const x = (.05 + rw() * .9) * W, y = (.04 + rw() * .5) * H, a = (.6 + .4 * Math.sin(T * 1.7 + i)) * Math.max(.35, night);
       g.fillStyle = `rgba(200,220,255,${a})`; g.beginPath(); g.arc(x, y, 1.5, 0, TAU); g.fill();
     }
     // falling stars, only in real darkness
-    if (night > .6 && Math.random() < dt * .045 && meteors.length < 2) {
+    if (night > .6 && Math.random() < dt * (DAY.shower ? .35 : .045) && meteors.length < (DAY.shower ? 5 : 2)) {
       const dir = Math.random() < .5 ? 1 : -1;
       meteors.push({ x: rand(.1, .9) * W, y: rand(.05, .35) * H, vx: dir * rand(300, 500), vy: rand(120, 220), t: 0 });
     }
@@ -1301,7 +1370,10 @@ function Absence() {
   }
   let veil = 0, full = false, vx = 0, vy = 0, holdG = 0, voice = null, lastStep = -1, stars = [], vstars = [];
   function newTree(g0) {
-    bs = buildTree(seed++, SEASON_COLS[SEAS]); Gmax = 0;
+    // the more species people have seen near you this month, the more the tree branches
+    bs = buildTree(seed++, SEASON_COLS[SEAS], LIVE.inat ? clamp(.15 + Math.log10(1 + LIVE.inat) * .08, .15, .45) : .28);
+    if (THEME.cols) bs.COLS = [0, 1, 2, 3].map(i => THEME.cols[i % THEME.cols.length]);
+    Gmax = 0;
     for (const b of bs) if (!b.kids) Gmax = Math.max(Gmax, b.birth + b.dur);
     Gmax += 1; G = g0; alive = 1;
   }
@@ -1318,10 +1390,23 @@ function Absence() {
       const r2 = rng(1234); vstars = []; for (let i = 0; i < Math.min(MEM.visits, 80); i++) vstars.push([.04 + r2() * .92, .04 + r2() * .5]);
       S.drone([mtof(39), mtof(46), mtof(51), mtof(58)], .35, 600);
     },
-    exit() { if (voice) voice.end(); voice = null; },
+    exit() { if (voice) voice.end(); voice = null; if (SESSION.watch && navigator.geolocation) { navigator.geolocation.clearWatch(SESSION.watch); SESSION.watch = 0; } },
     away(sec) { G += sec * .35; if (sec > 2) chord(); },
     dbl() { askLocation(); },
-    located() { seed = CTX.placeSeed; newTree(Math.max(G, 2.8)); skT = -99; chord(); },
+    located() {
+      seed = CTX.placeSeed; newTree(Math.max(G, 2.8)); skT = -99; chord();
+      if (Math.abs(CTX.lat) < 1.5) found('equator');
+      if (Math.abs(Math.abs(CTX.lat) - 23.44) < .5) found('tropic');
+      if (Math.abs(CTX.lat) > 66.56) found('polar');
+      // if you walk more than 200 m while it is open, the tree lets go of its blossoms
+      if (!SESSION.watch && navigator.geolocation) {
+        const la0 = CTX.lat, lo0 = CTX.lon;
+        SESSION.watch = navigator.geolocation.watchPosition(q => {
+          const km = Math.hypot((q.coords.latitude - la0) * 111, (q.coords.longitude - lo0) * 111 * Math.cos(la0 * RAD));
+          if (km > .2 && !SESSION.wandered) { SESSION.wandered = true; found('wanderer'); if (cur && cur.shake) cur.shake(1.5); }
+        }, () => {}, { maximumAge: 60000 });
+      }
+    },
     shake(k) {
       let n = 0;
       for (const b of bs) if (b.vis && !b.kids && !b.fallen && G > b.birth + b.dur && Math.random() < .35 * k && petals.length < 600) {
@@ -1358,12 +1443,25 @@ function Absence() {
       g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
       drawSky(dt, H * .87);
       const rootX = W / 2, rootY = H * .87;
+      if (LIVE.sea && LIVE.sea.sea) {   // near the coast: the real sea, at the real tide
+        const ty = H * .875 - clamp(LIVE.sea.level, -2, 2) * 4;
+        g.fillStyle = 'rgba(20,28,48,.9)'; g.fillRect(0, ty, W, H - ty);
+        g.strokeStyle = 'rgba(200,215,240,.12)'; g.lineWidth = 1; g.beginPath();
+        for (let x = 0; x <= W; x += 6) { const y = ty + 3 + Math.sin(x * .05 + T * 1.5) * (1 + LIVE.sea.wave); x ? g.lineTo(x, y) : g.moveTo(x, y); }
+        g.stroke();
+      }
+      if (SUN.alt < -10) {   // on the other side of the world it is day
+        const ag = g.createRadialGradient(W / 2, H * 1.1, 0, W / 2, H * 1.1, W * .7);
+        ag.addColorStop(0, 'rgba(255,200,140,.08)'); ag.addColorStop(1, 'rgba(255,200,140,0)'); g.fillStyle = ag; g.fillRect(0, H * .6, W, H * .4);
+      }
       g.fillStyle = '#0b0a11'; g.beginPath(); g.moveTo(0, H * .91); g.quadraticCurveTo(W / 2, H * .83, W, H * .91); g.lineTo(W, H); g.lineTo(0, H); g.closePath(); g.fill();
 
       const trunk = Math.min(H * .16, W * .32), tw = Math.min(W, H) * .017, wind = 1 + Math.abs(TILT.x) * 3;
       const paths = []; for (let d = 0; d < 10; d++) paths.push(new Path2D());
       const blos = bs.COLS.map(() => new Path2D());
       const aging = G - Gmax - (SEAS === 3 ? 0 : 2);
+      // the same tree, as it would have grown on this day fifty years ago: larger if it was colder then
+      const ghost = LIVE.past != null && LIVE.wx ? new Path2D() : null, gs = ghost ? clamp(1 - (LIVE.wx.mean - LIVE.past) * .04, .55, 1.35) : 1;
       for (let i = 0; i < bs.length; i++) {
         const b = bs[i];
         if (G < b.birth) { b.vis = false; continue; }
@@ -1375,6 +1473,7 @@ function Absence() {
         const Lb = b.len * trunk * (1 - Math.pow(1 - prog, 2));
         b.x1 = b.x0 + Math.cos(b.abs) * Lb; b.y1 = b.y0 + Math.sin(b.abs) * Lb;
         paths[b.d].moveTo(b.x0, b.y0); paths[b.d].lineTo(b.x1, b.y1);
+        if (ghost) { ghost.moveTo(rootX - (b.x0 - rootX) * gs, rootY + (b.y0 - rootY) * gs); ghost.lineTo(rootX - (b.x1 - rootX) * gs, rootY + (b.y1 - rootY) * gs); }
         if (!b.kids && !b.fallen) {
           const bp = clamp((G - b.birth - b.dur) / .8, 0, 1);
           if (bp > 0) {
@@ -1385,6 +1484,7 @@ function Absence() {
         }
       }
       g.globalAlpha = Math.max(0, alive); g.lineCap = 'round';
+      if (ghost) { g.strokeStyle = LIVE.wx.mean > LIVE.past ? 'rgba(140,170,255,.16)' : 'rgba(255,170,130,.16)'; g.lineWidth = 1; g.stroke(ghost); }
       for (let d = 0; d < 10; d++) { g.strokeStyle = `rgba(222,208,192,${.85 - d * .045})`; g.lineWidth = Math.max(.6, tw * Math.pow(.7, d)); g.stroke(paths[d]); }
       g.globalCompositeOperation = 'lighter';
       bs.COLS.forEach((c, i) => { g.fillStyle = c; g.globalAlpha = Math.max(0, alive) * .85; g.fill(blos[i]); });
@@ -1422,8 +1522,8 @@ function Absence() {
 //      a flower and noise. Touch bends the golden angle.
 // ======================================================================
 function Sunflower() {
-  const GA = Math.PI * (3 - Math.sqrt(5));
-  let n = 0, off = 0, N = 0, c = 0, rot = 0, wasOff = false, lastQ = 0, lastQT = 0, holdQ = 0, holdQT = 0, goldT = -9;
+  const GA = DAY.pi ? TAU / Math.PI : Math.PI * (3 - Math.sqrt(5));   // on Pi day, the flower turns by 1/π instead of the golden ratio
+  let n = 0, off = 0, N = 0, c = 0, rot = 0, wasOff = false, lastQ = 0, lastQT = 0, holdQ = 0, holdQT = 0, goldT = -9, woff = 0;
   function spokes(x) { for (let q = 1; q <= 89; q++) { const f = x * q; if (Math.abs(f - Math.round(f)) < .004) return q; } return 0; }
   return {
     dur: 58, hiddenTitle: '137.507764°',
@@ -1433,18 +1533,19 @@ function Sunflower() {
       S.drone([mtof(41), mtof(48), mtof(53), mtof(60)], .35, 800);
     },
     resize() { c = Math.min(W, H) * .48 / Math.sqrt(N); },
+    wheel(d) { woff = clamp(woff + d * .00004, -.04, .04); },
     frame(dt) {
       const f0 = P.values().next().value;
       n += dt * (f0 ? 22 : 110);
-      const target = f0 ? (f0.x / W - .5) * .07 + (f0.y / H - .5) * .01 : TILT.rx * .003;
+      const target = (f0 ? (f0.x / W - .5) * .07 + (f0.y / H - .5) * .01 : TILT.rx * .003) + woff;
       off = lerp(off, target, 1 - Math.exp(-dt * (f0 ? 5 : 2)));
-      rot += dt * .06 * (CTX.south ? -1 : 1);
+      rot += dt * .06 * (!CTX.approx && Math.abs(CTX.lat) < 1.5 ? 0 : CTX.south ? -1 : 1);
       if (Math.abs(off) > .004) wasOff = true;
       if (wasOff && !f0 && Math.abs(off) < .0006) { wasOff = false; S.bell(scaleNote(53, 4), 0, .6); }
       const q = Math.abs(off) > .0015 ? spokes((GA + off) / TAU) : 0;
       if (q && q !== lastQ && T - lastQT > .12) { lastQT = T; S.note(scaleNote(53, q % 15), { g: .05, d: 2, pan: clamp(off * 25, -1, 1) }); }
       lastQ = q;
-      if (f0 && [5, 8, 13, 21, 34, 55].includes(q)) { if (q === holdQ) holdQT += dt; else { holdQ = q; holdQT = 0; } } else { holdQ = 0; holdQT = 0; }
+      if ((f0 || Math.abs(woff) > .001) && [5, 8, 13, 21, 34, 55].includes(q)) { if (q === holdQ) holdQT += dt; else { holdQ = q; holdQT = 0; } } else { holdQ = 0; holdQT = 0; }
       if (holdQT > 1.6 && T - goldT > 4) { goldT = T; found('fibonacci'); [0, 1, 2, 3, 5, 8].forEach((k, i) => S.note(scaleNote(53, k), { g: .04, d: 3, at: i * .09 })); }
       g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
       g.fillStyle = 'rgba(5,4,7,.45)'; g.fillRect(0, 0, W, H);
@@ -1460,8 +1561,12 @@ function Sunflower() {
       }
       const gk = clamp(1 - (T - goldT) / 3, 0, 1);
       g.fillStyle = `rgba(${lerp(236, 255, gk) | 0},${lerp(228, 207, gk) | 0},${lerp(214, 107, gk) | 0},.82)`; g.fill(pA);
-      g.fillStyle = '#ff6a4d'; g.fill(pB);
-      g.fillStyle = '#6a86ff'; g.fill(pC);
+      g.fillStyle = DAY.fib ? '#ffcf6b' : '#ff6a4d'; g.fill(pB);
+      g.fillStyle = DAY.fib ? '#ffcf6b' : '#6a86ff'; g.fill(pC);
+      if (LIVE.aq && LIVE.aq.pollen > 10) {   // the real pollen in your air
+        const np = Math.min(60, LIVE.aq.pollen | 0); g.fillStyle = 'rgba(255,220,100,.55)';
+        for (let i = 0; i < np; i++) { const x = (i * 97.3 + T * 12 * (1 + i % 3)) % W, y = (i * 53.1 + Math.sin(T * .3 + i) * 40 + T * 6) % H; g.fillRect(x, y, 1.6, 1.6); }
+      }
     }
   };
 }
@@ -1519,7 +1624,8 @@ function Bodies() {
         const a = rand(0, TAU), d = 3;
         const [sx, sy] = toS({ x: Math.cos(a) * d, y: Math.sin(a) * d });
         const [tx, ty] = toS({ x: 0, y: 0 });
-        add(sx, sy, (tx - sx) * .2, (ty - sy) * .2, .25);
+        const nv = LIVE.neo, vk = nv ? clamp(nv.kps / 15, .5, 2) : 1;
+        add(sx, sy, (tx - sx) * .2 * vk, (ty - sy) * .2 * vk, nv ? clamp(.1 + nv.dia / 800, .1, .8) : .25);
       }
       let mx = 0, my = 0, M = 0; for (const b of B) { mx += b.x * b.m; my += b.y * b.m; M += b.m; } mx /= M; my /= M;
       for (let i = B.length - 1; i >= 0; i--) if (Math.hypot(B[i].x - mx, B[i].y - my) > 5) { S.note(mtof(38), { g: .1, d: 2.5, glide: 1.5 }); B.splice(i, 1); }
@@ -1573,6 +1679,7 @@ function Butterfly() {
       S.drone([mtof(40), mtof(47), mtof(52), mtof(59)], .3, 650);
     },
     move(p) { vphi += p.dx * .0035; },
+    wheel(d) { vphi += d * .0003; },
     shake(k) { for (const p of ps) { p[0] += rand(-1, 1) * .02 * k; p[1] += rand(-1, 1) * .02 * k; } vphi += rand(-.05, .05); S.noise({ dur: .4, f: 2400, g: .06 }); },
     up(p) {
       if (p.moved > 10) return;
@@ -1645,6 +1752,8 @@ function Chladni() {
     resize() { const os = side, oox = ox, ooy = oy; layout(); for (let i = 0; i < NG; i++) { G[2 * i] = ox + (G[2 * i] - oox) / os * side; G[2 * i + 1] = oy + (G[2 * i + 1] - ooy) / os * side; } },
     down(p) { cell = -1; touch(p); },
     move(p) { touch(p); },
+    thunder() { mode(1 + (Math.random() * 8 | 0), 1 + (Math.random() * 8 | 0)); amp = 3; },
+    wheel(d) { if (T - lastMode > .25) mode(clamp(n + Math.sign(d), 1, 9), m); },
     shake(k) {
       const j = side * .25 * k;
       for (let i = 0; i < NG; i++) { G[2 * i] = clamp(G[2 * i] + rand(-j, j), ox, ox + side); G[2 * i + 1] = clamp(G[2 * i + 1] + rand(-j, j), oy, oy + side); }
@@ -1652,6 +1761,8 @@ function Chladni() {
     },
     frame(dt) {
       amp = lerp(amp, 1, 1 - Math.exp(-dt * .6));
+      // a large earthquake somewhere on Earth today: the plate trembles by itself
+      if (LIVE.quake && LIVE.quake.mag >= 6 && Date.now() - LIVE.quake.t < 864e5 && Math.random() < dt / 20) { amp = 1.8 + (LIVE.quake.mag - 6); S.noise({ dur: 1.5, f: 90, ft: 'lowpass', g: .25 }); }
       if (T - lastMode > 8 && !P.size) mode(1 + (Math.random() * 8 | 0), 1 + (Math.random() * 8 | 0));
       const res = P.size && T - lastMode > 4 ? clamp((T - lastMode - 4) / 4, 0, 1) : 0;
       if (res >= 1 && T - burstT > 6) {
@@ -1730,6 +1841,7 @@ function Epicycles() {
     hum = S.partials(perfect ? [{ f: 220 * Math.abs(coef[0].k || 1), g: .06 }] : top.map(c => ({ f: 55 * Math.abs(c.k), g: .05 * c.amp / mxA, pan: Math.sign(c.k) * .5 })));
   }
   function pickShape() {
+    if (DAY.pi && !SESSION.piDone) { SESSION.piDone = true; setPath([[-.6, .8], [-.5, -.6], [-1, -.55], [1, -.65], [.45, -.6], [.5, .7], [.75, .8]]); return; }
     if (pastStrokes.length && Math.random() < .6) setPath(pastStrokes[Math.random() * pastStrokes.length | 0].map(p => [p[0] * W, p[1] * H]));
     else setPath(blob());
   }
@@ -1809,7 +1921,7 @@ function Relativity() {
     frame(dt) {
       const masses = [...P.values()].map(p => ({ x: p.x, y: p.y, s: 1 }));
       masses.push({ x: W / 2 + Math.sin(T * .11) * W * .62, y: H / 2 + Math.sin(T * .07 + 1) * H * .55, s: .7 });
-      if (P.size >= 3) {
+      if (P.size >= 3 || (P.size && KEYS.shift)) {
         const fs = [...P.values()];
         bh.x = fs.reduce((a, q) => a + q.x, 0) / fs.length; bh.y = fs.reduce((a, q) => a + q.y, 0) / fs.length;
         if (bh.r < 2) { found('horizon'); S.note(mtof(26), { g: .25, d: 4, glide: 2 }); buzz(60); }
@@ -1835,7 +1947,7 @@ function Relativity() {
           dx += ex / d * pull; dy += ey / d * pull;
         }
         c.rate = Math.sqrt(Math.max(.0016, 1 - Math.min(.9984, phi)));
-        const prev = c.tau; c.tau += dt * c.rate * TAU / 4;
+        const prev = c.tau; c.tau += dt * c.rate * TAU / 4 * (deadOfNight() ? -1 : 1);
         if (Math.floor(c.tau / TAU) !== Math.floor(prev / TAU)) ticks++;
         c.x = c.bx + dx; c.y = c.by + dy;
         if (bh.r > 2) {
@@ -1858,7 +1970,7 @@ function Relativity() {
       g.lineCap = 'round';
       for (const c of C) {
         if (c.gone) continue;
-        const r = c.rate, col = `${lerp(255, 236, r) | 0},${lerp(90, 228, r) | 0},${lerp(60, 214, r) | 0}`, Rr = R * (1 - Math.min(1, c.fall || 0) * .9);
+        const r = c.rate, col = DAY.equinox && c.bx < W / 2 ? `${lerp(255, 150, r) | 0},${lerp(90, 170, r) | 0},${lerp(60, 255, r) | 0}` : `${lerp(255, 236, r) | 0},${lerp(90, 228, r) | 0},${lerp(60, 214, r) | 0}`, Rr = R * (1 - Math.min(1, c.fall || 0) * .9);
         g.strokeStyle = `rgba(${col},.3)`; g.lineWidth = 1;
         g.beginPath(); g.arc(c.x, c.y, Rr, 0, TAU); g.stroke();
         g.fillStyle = `rgba(${col},.5)`; g.fillRect(c.x - .8, c.y - Rr + 2, 1.6, 2.4);
@@ -1876,10 +1988,668 @@ function Relativity() {
   };
 }
 
+const reducedMotion = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
+const KEYS = { shift: false };
+// ======================================================================
+// THE WORLD — the calendar, the clock, the place, the weather, the sky,
+// and a few live signals from the planet. Every source is optional: if
+// it is missing, slow or offline, nothing happens and the piece goes on.
+// ======================================================================
+const VERSION = 3;
+const DESK = (() => { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { return false; } })();
+
+// --- what the timezone says about where you are: [country, lat, lon, region] ---
+const TZ = {
+  'America/New_York': ['US', 40.71, -74.01, 'US-NY'], 'America/Detroit': ['US', 42.33, -83.05, 'US-MI'], 'America/Chicago': ['US', 41.88, -87.63, 'US-IL'],
+  'America/Indiana/Indianapolis': ['US', 39.77, -86.16, 'US-IN'], 'America/Denver': ['US', 39.74, -104.99, 'US-CO'], 'America/Boise': ['US', 43.62, -116.2, 'US-ID'],
+  'America/Phoenix': ['US', 33.45, -112.07, 'US-AZ'], 'America/Los_Angeles': ['US', 34.05, -118.24, 'US-CA'], 'America/Anchorage': ['US', 61.22, -149.9, 'US-AK'],
+  'Pacific/Honolulu': ['US', 21.31, -157.86, 'US-HI'], 'America/Toronto': ['CA', 43.65, -79.38, 'CA-ON'], 'America/Montreal': ['CA', 45.5, -73.57, 'CA-QC'],
+  'America/Vancouver': ['CA', 49.28, -123.12, 'CA-BC'], 'America/Edmonton': ['CA', 53.55, -113.49, 'CA-AB'], 'America/Winnipeg': ['CA', 49.9, -97.14, 'CA-MB'],
+  'America/Regina': ['CA', 50.45, -104.6, 'CA-SK'], 'America/Halifax': ['CA', 44.65, -63.57, 'CA-NS'], 'America/St_Johns': ['CA', 47.56, -52.71, 'CA-NL'],
+  'America/Mexico_City': ['MX', 19.43, -99.13], 'America/Monterrey': ['MX', 25.69, -100.32], 'America/Tijuana': ['MX', 32.51, -117.04],
+  'America/Bogota': ['CO', 4.71, -74.07], 'America/Lima': ['PE', -12.05, -77.04], 'America/Santiago': ['CL', -33.45, -70.67],
+  'America/Argentina/Buenos_Aires': ['AR', -34.6, -58.38], 'America/Buenos_Aires': ['AR', -34.6, -58.38], 'America/Sao_Paulo': ['BR', -23.55, -46.63],
+  'America/Caracas': ['VE', 10.48, -66.9], 'America/Montevideo': ['UY', -34.9, -56.16], 'America/Havana': ['CU', 23.11, -82.37],
+  'America/Puerto_Rico': ['PR', 18.47, -66.11], 'America/Guatemala': ['GT', 14.63, -90.51], 'America/Panama': ['PA', 8.98, -79.52],
+  'America/La_Paz': ['BO', -16.5, -68.15], 'America/Guayaquil': ['EC', -2.19, -79.89], 'America/Costa_Rica': ['CR', 9.93, -84.08],
+  'Europe/London': ['GB', 51.51, -.13, 'GB-ENG'], 'Europe/Dublin': ['IE', 53.35, -6.26], 'Europe/Lisbon': ['PT', 38.72, -9.14],
+  'Europe/Madrid': ['ES', 40.42, -3.7, 'ES-MD'], 'Europe/Paris': ['FR', 48.86, 2.35], 'Europe/Brussels': ['BE', 50.85, 4.35],
+  'Europe/Amsterdam': ['NL', 52.37, 4.9], 'Europe/Luxembourg': ['LU', 49.61, 6.13], 'Europe/Berlin': ['DE', 52.52, 13.4, 'DE-BE'],
+  'Europe/Zurich': ['CH', 47.38, 8.54, 'CH-ZH'], 'Europe/Vienna': ['AT', 48.21, 16.37], 'Europe/Rome': ['IT', 41.9, 12.5],
+  'Europe/Copenhagen': ['DK', 55.68, 12.57], 'Europe/Oslo': ['NO', 59.91, 10.75], 'Europe/Stockholm': ['SE', 59.33, 18.07],
+  'Europe/Helsinki': ['FI', 60.17, 24.94], 'Europe/Tallinn': ['EE', 59.44, 24.75], 'Europe/Riga': ['LV', 56.95, 24.11], 'Europe/Vilnius': ['LT', 54.69, 25.28],
+  'Europe/Warsaw': ['PL', 52.23, 21.01], 'Europe/Prague': ['CZ', 50.08, 14.44], 'Europe/Bratislava': ['SK', 48.15, 17.11],
+  'Europe/Budapest': ['HU', 47.5, 19.04], 'Europe/Ljubljana': ['SI', 46.06, 14.51], 'Europe/Zagreb': ['HR', 45.81, 15.98],
+  'Europe/Belgrade': ['RS', 44.79, 20.45], 'Europe/Bucharest': ['RO', 44.43, 26.1], 'Europe/Sofia': ['BG', 42.7, 23.32],
+  'Europe/Athens': ['GR', 37.98, 23.73], 'Europe/Istanbul': ['TR', 41.01, 28.98], 'Europe/Kyiv': ['UA', 50.45, 30.52], 'Europe/Kiev': ['UA', 50.45, 30.52],
+  'Europe/Moscow': ['RU', 55.76, 37.62], 'Atlantic/Reykjavik': ['IS', 64.15, -21.94], 'Europe/Malta': ['MT', 35.9, 14.51],
+  'Africa/Cairo': ['EG', 30.04, 31.24], 'Africa/Lagos': ['NG', 6.52, 3.38], 'Africa/Nairobi': ['KE', -1.29, 36.82],
+  'Africa/Johannesburg': ['ZA', -26.2, 28.05], 'Africa/Casablanca': ['MA', 33.57, -7.59], 'Africa/Accra': ['GH', 5.6, -.19],
+  'Africa/Addis_Ababa': ['ET', 9.03, 38.74], 'Africa/Algiers': ['DZ', 36.75, 3.06], 'Africa/Tunis': ['TN', 36.81, 10.18],
+  'Asia/Dubai': ['AE', 25.2, 55.27], 'Asia/Riyadh': ['SA', 24.71, 46.68], 'Asia/Qatar': ['QA', 25.29, 51.53], 'Asia/Tehran': ['IR', 35.69, 51.39],
+  'Asia/Jerusalem': ['IL', 31.77, 35.21], 'Asia/Amman': ['JO', 31.95, 35.93], 'Asia/Beirut': ['LB', 33.89, 35.5], 'Asia/Baghdad': ['IQ', 33.31, 44.36],
+  'Asia/Karachi': ['PK', 24.86, 67], 'Asia/Kolkata': ['IN', 22.57, 88.36], 'Asia/Calcutta': ['IN', 22.57, 88.36], 'Asia/Dhaka': ['BD', 23.81, 90.41],
+  'Asia/Kathmandu': ['NP', 27.72, 85.32], 'Asia/Colombo': ['LK', 6.93, 79.86], 'Asia/Bangkok': ['TH', 13.76, 100.5],
+  'Asia/Ho_Chi_Minh': ['VN', 10.82, 106.63], 'Asia/Saigon': ['VN', 10.82, 106.63], 'Asia/Jakarta': ['ID', -6.21, 106.85],
+  'Asia/Kuala_Lumpur': ['MY', 3.14, 101.69], 'Asia/Singapore': ['SG', 1.35, 103.82], 'Asia/Manila': ['PH', 14.6, 120.98],
+  'Asia/Shanghai': ['CN', 31.23, 121.47], 'Asia/Hong_Kong': ['HK', 22.32, 114.17], 'Asia/Taipei': ['TW', 25.03, 121.57],
+  'Asia/Seoul': ['KR', 37.57, 126.98], 'Asia/Tokyo': ['JP', 35.68, 139.69], 'Asia/Almaty': ['KZ', 43.24, 76.89], 'Asia/Tashkent': ['UZ', 41.3, 69.24],
+  'Australia/Sydney': ['AU', -33.87, 151.21, 'AU-NSW'], 'Australia/Melbourne': ['AU', -37.81, 144.96, 'AU-VIC'], 'Australia/Brisbane': ['AU', -27.47, 153.03, 'AU-QLD'],
+  'Australia/Perth': ['AU', -31.95, 115.86, 'AU-WA'], 'Australia/Adelaide': ['AU', -34.93, 138.6, 'AU-SA'], 'Australia/Hobart': ['AU', -42.88, 147.33, 'AU-TAS'],
+  'Australia/Darwin': ['AU', -12.46, 130.84, 'AU-NT'], 'Pacific/Auckland': ['NZ', -36.85, 174.76],
+};
+(() => {
+  let tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+  const t = TZ[tz];
+  let cc = t ? t[0] : '';
+  if (!cc) { try { cc = new Intl.Locale(navigator.language).maximize().region || ''; } catch (e) {} }
+  CTX.country = cc; CTX.region = (t && t[3]) || ''; CTX.tzCity = !!t;
+  if (t && CTX.approx) { CTX.lat = t[1]; CTX.lon = t[2]; CTX.south = t[1] < 0; }
+})();
+
+// --- the calendar ---
+const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+function easterMD(y) {
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g0 = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g0 + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  return Math.floor((h + l - 7 * m + 114) / 31) * 100 + ((h + l - 7 * m + 114) % 31) + 1;
+}
+// Moveable feasts by year (month*100 + day). Lunar calendars can differ by a day locally.
+const DATES = {
+  lny: { 2026: 217, 2027: 206, 2028: 126, 2029: 213, 2030: 203 },
+  diwali: { 2026: 1108, 2027: 1029, 2028: 1017, 2029: 1105, 2030: 1026 },
+  eidF: { 2026: 320, 2027: 310, 2028: 227, 2029: 215, 2030: 205 },
+  eidA: { 2026: 527, 2027: 517, 2028: 505, 2029: 424, 2030: 413 },
+  hanukkah: { 2026: 1204, 2027: 1224, 2028: 1212, 2029: 1201, 2030: 1220 },
+  holi: { 2026: 304, 2027: 322, 2028: 311, 2029: 301, 2030: 320 },
+};
+const ECL = {
+  solar: [20260812, 20270206, 20270802, 20280126, 20280722, 20290114, 20290612, 20290711, 20291205, 20300601, 20301125],
+  lunar: [20260303, 20260828, 20270220, 20270718, 20270817, 20280112, 20280706, 20281231, 20290626, 20291220, 20300615, 20301209],
+};
+// Quadrantids, Lyrids, Eta Aquariids, Perseids, Orionids, Leonids, Geminids
+const SHOWERS = [[103, 104], [422, 423], [505, 506], [811, 813], [1021, 1022], [1117, 1118], [1213, 1215]];
+const DAY = (() => {
+  const d = new Date(), y = d.getFullYear(), m = (d.getMonth() + 1) * 100 + d.getDate(), dow = d.getDay();
+  const since = mmdd => mmdd ? Math.round((new Date(y, d.getMonth(), d.getDate()) - new Date(y, Math.floor(mmdd / 100) - 1, mmdd % 100)) / 864e5) : -99;
+  const juneSol = [620, 621, 622].includes(m), decSol = [1220, 1221, 1222].includes(m), hk = since(DATES.hanukkah[y]);
+  return {
+    y, m, dow,
+    equinox: [319, 320, 321, 921, 922, 923].includes(m),
+    longest: CTX.south ? decSol : juneSol, shortest: CTX.south ? juneSol : decSol,
+    shower: SHOWERS.some(([a, b]) => m >= a && m <= b),
+    solarEclipse: ECL.solar.includes(y * 1e4 + m), lunarEclipse: ECL.lunar.includes(y * 1e4 + m),
+    leap: m === 229, pi: m === 314, fib: m === 1123, fri13: dow === 5 && d.getDate() === 13,
+    hanukkah: hk >= 0 && hk < 8 ? hk + 1 : 0,
+  };
+})();
+
+// --- holidays: the visitor's own country and region ---
+const THEME_COLS = {
+  fireworks: ['#ff6a4d', '#ffd36b', '#6a86ff', '#f3e9dc', '#ff8fb0'], snow: ['#ffffff', '#dfe9ff', '#ff6a4d', '#7fc97a'],
+  spring: ['#ffc2d4', '#c9f0d0', '#fff1a8', '#cfd8ff'], harvest: ['#e8a23a', '#c24a2a', '#ffb36b', '#8a5a2b'],
+  poppies: ['#c8102e', '#a00d24', '#e0303c'], lanterns: ['#e0242b', '#ffcf6b', '#ff7a3d'], halloween: ['#ff7a1a', '#9b5cff', '#ffb347'],
+  lamps: ['#ffb347', '#ffd36b', '#ff7a3d'], crescent: ['#ffe7a3', '#7fd1b9', '#ffcf6b'], colour: ['#ff3fa4', '#ffd400', '#2ec4ff', '#7cff4f', '#9b5cff', '#ff7a1a'],
+  candles: ['#ffd36b', '#6a9bff', '#ffffff'], marigold: ['#ff9f1c', '#ffbf3c', '#e85d04', '#d00070'], green: ['#2fbf71', '#7fe0a0', '#f3e9dc'],
+  gentle: ['#ffcf6b', '#f3e9dc', '#ffe3a3'], rest: ['#cfd8ff', '#f3e9dc', '#ffe3a3'],
+};
+const THEME = { kind: null, cols: null, name: '' };
+function themeOf(name) {
+  const n = name.toLowerCase();
+  if (/lunar new year|spring festival|chinese new year|seollal|t[eế]t/.test(n)) return 'lanterns';
+  if (/new year|hogmanay/.test(n)) return 'fireworks';
+  if (/christmas|nativity|boxing|st\.? stephen/.test(n)) return 'snow';
+  if (/easter|good friday|holy|ascension|pentecost|whit|corpus/.test(n)) return 'spring';
+  if (/thanksgiving|harvest|chuseok|mid-autumn/.test(n)) return 'harvest';
+  if (/memorial|remembrance|veterans|anzac|armistice|fallen|martyr|heroes/.test(n)) return 'poppies';
+  if (/diwali|deepavali/.test(n)) return 'lamps';
+  if (/eid|ramadan|hari raya|bayram|islamic new year|prophet/.test(n)) return 'crescent';
+  if (/holi\b/.test(n)) return 'colour';
+  if (/hanukkah|chanukah/.test(n)) return 'candles';
+  if (/dead|all souls|all saints/.test(n)) return 'marigold';
+  if (/patrick/.test(n)) return 'green';
+  if (/labou?r|workers|may day/.test(n)) return 'rest';
+  if (/independence|national|republic|constitution|unity|liberation|freedom|statehood|canada day|australia day|bastille|king|queen|founding|revolution|federation|day of|victory/.test(n)) return 'fireworks';
+  return 'gentle';
+}
+function setTheme(kind, name) { if (THEME.kind || !THEME_COLS[kind]) return; THEME.kind = kind; THEME.cols = THEME_COLS[kind]; THEME.name = name; }
+(() => {
+  const cc = CTX.country, m = DAY.m, y = DAY.y;
+  const has = list => list.split(' ').includes(cc);
+  if (m === 101) setTheme('fireworks', 'New Year');
+  if (DATES.lny[y] === m && has('CN TW HK MO SG VN KR MY ID PH TH')) setTheme('lanterns', 'Lunar New Year');
+  if (DATES.diwali[y] === m && has('IN NP SG MY LK MU FJ GY TT')) setTheme('lamps', 'Diwali');
+  const MUSLIM = 'SA AE EG TR ID MY PK BD IR MA DZ TN JO QA KW OM BH IQ SY LB SN NG ML NE SO AF UZ KZ AZ BN';
+  if ((DATES.eidF[y] === m || DATES.eidA[y] === m) && has(MUSLIM)) setTheme('crescent', 'Eid');
+  if (DATES.holi[y] === m && has('IN NP')) setTheme('colour', 'Holi');
+  if (DAY.hanukkah && has('IL US')) setTheme('candles', 'Hanukkah');
+  if (m === 1031 && has('US CA IE GB')) setTheme('halloween', 'Halloween');
+  if ((m === 1101 || m === 1102) && cc === 'MX') setTheme('marigold', 'Día de Muertos');
+})();
+
+// --- live signals, cached in this browser and never required ---
+const LIVE = {};
+const POLL = {};
+function getJSON(url, asText) {
+  if (!navigator.onLine) return Promise.resolve(null);
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null, tm = setTimeout(() => { if (ctl) ctl.abort(); }, 12000);
+  return fetch(url, ctl ? { signal: ctl.signal } : {}).then(r => !r.ok || r.status === 204 ? null : asText ? r.text() : r.json())
+    .then(v => { clearTimeout(tm); return v; }).catch(() => { clearTimeout(tm); return null; });
+}
+function cached(key, ttlMin, url, parse) {
+  const K = 'tb.' + key;
+  try { const c = JSON.parse(localStorage.getItem(K) || 'null'); if (c && Date.now() - c.t < ttlMin * 6e4) return Promise.resolve(c.v); } catch (e) {}
+  return getJSON(url).then(j => {
+    let v = null; try { v = j == null ? null : parse(j); } catch (e) {}
+    if (v != null) try { localStorage.setItem(K, JSON.stringify({ t: Date.now(), v })); } catch (e) {}
+    return v;
+  });
+}
+function poll(name, url, every, use) {
+  const p = POLL[name] || (POLL[name] = { t: 0, busy: false });
+  if (Date.now() - p.t < every * 1000 || p.busy || !navigator.onLine) return;
+  p.t = Date.now(); p.busy = true;
+  getJSON(url).then(j => { if (j != null) try { use(j); } catch (e) {} p.busy = false; });
+}
+// Weather and nature use the place: the timezone's city, or (opt-in) the device, rounded to ~10 km.
+const GEO = () => (CTX.tzCity || !CTX.approx) ? [Math.round(CTX.lat * 10) / 10, Math.round(CTX.lon * 10) / 10] : null;
+function fetchPlace() {
+  const geo = GEO(); if (!geo) return;
+  const [la, lo] = geo, q = `latitude=${la}&longitude=${lo}`, gk = (CTX.approx ? 'tz' : 'gps') + '.' + la + '.' + lo, d = new Date();
+  cached('wx.' + gk, 30, `https://api.open-meteo.com/v1/forecast?${q}&current=temperature_2m,precipitation,snowfall,weather_code,cloud_cover,wind_speed_10m&daily=temperature_2m_mean&timezone=auto&forecast_days=1`, j => {
+    const c = j.current || {}, code = c.weather_code | 0, wet = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95, white = (code >= 71 && code <= 77) || code === 85 || code === 86;
+    return {
+      temp: c.temperature_2m, code, cloud: (c.cloud_cover || 0) / 100, wind: c.wind_speed_10m || 0,
+      rain: wet ? clamp((c.precipitation || 0) / 4, .25, 1) : 0, snow: white ? clamp((c.snowfall || 0) * 2, .3, 1) : 0,
+      fog: code === 45 || code === 48, storm: code >= 95, mean: j.daily && j.daily.temperature_2m_mean ? j.daily.temperature_2m_mean[0] : c.temperature_2m,
+    };
+  }).then(v => { if (v) LIVE.wx = v; });
+  cached('aq.' + gk, 60, `https://air-quality-api.open-meteo.com/v1/air-quality?${q}&current=pm2_5,alder_pollen,birch_pollen,grass_pollen,ragweed_pollen,olive_pollen,mugwort_pollen`, j => {
+    const c = j.current || {}; let pol = 0; for (const k in c) if (/pollen/.test(k) && c[k]) pol += c[k];
+    return { pm: c.pm2_5 || 0, pollen: pol };
+  }).then(v => { if (v) LIVE.aq = v; });
+  cached('sea.' + gk, 60, `https://marine-api.open-meteo.com/v1/marine?${q}&current=sea_level_height_msl,wave_height`, j => {
+    const c = j.current || {};
+    return c.wave_height == null && c.sea_level_height_msl == null ? { sea: false } : { sea: true, level: c.sea_level_height_msl || 0, wave: c.wave_height || 0 };
+  }).then(v => { if (v) LIVE.sea = v; });
+  const p = new Date(d); p.setFullYear(d.getFullYear() - 50);
+  cached('past.' + gk + '.' + iso(d), 24 * 60, `https://archive-api.open-meteo.com/v1/archive?${q}&start_date=${iso(p)}&end_date=${iso(p)}&daily=temperature_2m_mean&timezone=auto`,
+    j => j.daily && j.daily.temperature_2m_mean && j.daily.temperature_2m_mean[0] != null ? j.daily.temperature_2m_mean[0] : null).then(v => { if (v != null) LIVE.past = v; });
+  cached('elev.' + gk, 7 * 24 * 60, `https://api.open-meteo.com/v1/elevation?${q}`, j => j.elevation ? j.elevation[0] : null).then(v => { if (v != null) LIVE.elev = v; });
+  cached('inat.' + gk, 12 * 60, `https://api.inaturalist.org/v1/observations/species_counts?lat=${la}&lng=${lo}&radius=15&d1=${iso(new Date(Date.now() - 30 * 864e5))}&per_page=1`,
+    j => j.total_results | 0).then(v => { if (v != null) LIVE.inat = v; });
+}
+function fetchWorld() {
+  const d = new Date(), y = d.getFullYear();
+  cached('kp', 60, 'https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json', j => {
+    const r = j[j.length - 1]; return Array.isArray(r) ? parseFloat(r[1]) : +(r.Kp != null ? r.Kp : r.kp || 0);
+  }).then(v => { if (v != null && !isNaN(v)) LIVE.kp = v; });
+  cached('flare', 60, 'https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json', j => {
+    const f = Array.isArray(j) ? j[0] : j; return f && f.max_class ? f.max_class : null;
+  }).then(v => { if (v) LIVE.flare = v; });
+  cached('quake', 30, 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_day.geojson', j => {
+    let best = null; for (const f of j.features || []) if (!best || f.properties.mag > best.mag) best = { mag: f.properties.mag, t: f.properties.time };
+    return best;
+  }).then(v => { if (v) LIVE.quake = v; });
+  cached('neo.' + iso(d), 12 * 60, `https://api.nasa.gov/neo/rest/v1/feed?start_date=${iso(d)}&end_date=${iso(d)}&api_key=DEMO_KEY`, j => {
+    let best = null;
+    for (const k in j.near_earth_objects || {}) for (const o of j.near_earth_objects[k]) {
+      const ca = o.close_approach_data && o.close_approach_data[0]; if (!ca) continue;
+      const km = +ca.miss_distance.kilometers;
+      if (!best || km < best.km) best = { km, kps: +ca.relative_velocity.kilometers_per_second, dia: o.estimated_diameter.meters.estimated_diameter_max, haz: !!o.is_potentially_hazardous_asteroid };
+    }
+    return best;
+  }).then(v => { if (v) LIVE.neo = v; });
+  cached('ice', 7 * 24 * 60, 'https://global-warming.org/api/arctic-api', j => {
+    const dt = j.arcticData && j.arcticData.data; if (!dt) return null;
+    const ks = Object.keys(dt).filter(k => dt[k].value > 0).sort(), lk = ks[ks.length - 1], fk = ks.find(k => k.slice(4) === lk.slice(4));
+    return lk && fk ? dt[lk].value / dt[fk].value : null;
+  }).then(v => { if (v) LIVE.ice = v; });
+  cached('art.' + iso(d), 24 * 60, `https://api.artic.edu/api/v1/artworks/search?query%5Bterm%5D%5Bdate_start%5D=${y - 100}&fields=id,color&limit=20`, j => {
+    const list = (j.data || []).filter(a => a.color && a.color.s > 20 && a.color.l > 20 && a.color.l < 80);
+    const a = list[(d.getDate() * 7) % Math.max(1, list.length)]; return a ? { h: a.color.h, s: a.color.s, l: a.color.l } : null;
+  }).then(v => { if (v) LIVE.art = v; });
+  if (CTX.country === 'GB') cached('carbon', 30, 'https://api.carbonintensity.org.uk/intensity', j => {
+    const r = j.data && j.data[0] && j.data[0].intensity; return r ? r.index : null;
+  }).then(v => { if (v) LIVE.carbon = v; });
+  getJSON('https://www.random.org/integers/?num=1&min=1&max=1000000000&col=1&base=10&format=plain&rnd=new', true).then(t => { const n = parseInt(t, 10); if (n > 0) LIVE.rnd = n; });
+  if (CTX.country) cached('hol.' + CTX.country + '.' + y, 7 * 24 * 60, `https://date.nager.at/api/v3/PublicHolidays/${y}/${CTX.country}`,
+    j => Array.isArray(j) ? j.map(h => [h.date, h.name, h.counties, h.global]) : null).then(list => {
+      const today = iso(d);
+      if (list) {
+        for (const [dt, name, counties, glob] of list) if (dt === today && (glob || !counties || counties.includes(CTX.region))) { setTheme(themeOf(name), name); found('holiday'); }
+      } else {
+        if (DAY.m === 1225) setTheme('snow', 'Christmas');
+        if (DAY.m === easterMD(y)) setTheme('spring', 'Easter');
+      }
+    });
+  fetchPlace();
+}
+fetchWorld();
+// Where the ISS is relative to you: altitude and azimuth in radians, like altAz().
+function satAltAz(lat, lon, altKm) {
+  const v = (la, lo, r) => [r * Math.cos(la) * Math.cos(lo), r * Math.cos(la) * Math.sin(lo), r * Math.sin(la)];
+  const la = CTX.lat * RAD, lo = CTX.lon * RAD, o = v(la, lo, 6371), s = v(lat * RAD, lon * RAD, 6371 + altKm), d = [s[0] - o[0], s[1] - o[1], s[2] - o[2]];
+  const E = -Math.sin(lo) * d[0] + Math.cos(lo) * d[1], N = -Math.sin(la) * Math.cos(lo) * d[0] - Math.sin(la) * Math.sin(lo) * d[1] + Math.cos(la) * d[2];
+  const U = Math.cos(la) * Math.cos(lo) * d[0] + Math.cos(la) * Math.sin(lo) * d[1] + Math.sin(la) * d[2];
+  return [Math.atan2(U, Math.hypot(E, N)), (Math.atan2(E, N) + TAU) % TAU];
+}
+function issNow() {
+  const s = LIVE.iss; if (!s) return null;
+  const k = clamp((Date.now() - s.t) / Math.max(1000, s.t - s.pt), 0, 3), dl = ((s.lon - s.plon + 540) % 360) - 180;
+  return [s.lat + (s.lat - s.plat) * k, s.lon + dl * k, s.alt];
+}
+
+// --- the clock and the sun ---
+const CLK = { h: 0, m: 0, s: 0, dow: 0 };
+const SUN = { alt: -30, az: 0, t: -99, noon: false };
+function clockTick() {
+  const d = new Date(); CLK.h = d.getHours(); CLK.m = d.getMinutes(); CLK.s = d.getSeconds(); CLK.dow = d.getDay();
+  if (T - SUN.t > 20) {
+    SUN.t = T; const k = sky(); SUN.alt = k.sun[0] / RAD; SUN.az = k.sun[1];
+    const south = CTX.south ? 0 : Math.PI, da = Math.abs(((SUN.az - south + Math.PI) % TAU + TAU) % TAU - Math.PI);
+    SUN.noon = SUN.alt > 0 && da < 3 * RAD;
+  }
+}
+const deadOfNight = () => CLK.h === 3;
+function tempo() {
+  let k = [.93, .9, .97, 1, 1, 1.06, 1.04][CLK.dow];
+  const hm = CLK.h * 60 + CLK.m, weekday = CLK.dow > 0 && CLK.dow < 6;
+  if (weekday && ((hm >= 450 && hm < 540) || (hm >= 1020 && hm < 1110))) k *= 1.08;
+  if (deadOfNight()) k *= .8;
+  if (THEME.kind === 'rest') k *= .85;
+  if (T > 1200) k *= Math.max(.7, 1 - (T - 1200) / 3000);
+  return k;
+}
+S.chirp = function () {
+  const c = this.c; if (!c || !this.on) return;
+  const t0 = c.currentTime, n = 2 + (Math.random() * 4 | 0), base = rand(2500, 4200), pan = rand(-.8, .8);
+  for (let i = 0; i < n; i++) {
+    const t = t0 + i * rand(.07, .14), o = c.createOscillator(), gn = c.createGain();
+    o.frequency.setValueAtTime(base * rand(.9, 1.1), t); o.frequency.exponentialRampToValueAtTime(base * rand(1.2, 1.6), t + .06);
+    gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(.012, t + .01); gn.gain.exponentialRampToValueAtTime(.0001, t + .08);
+    o.connect(gn); const out = this.pan(gn, pan); out.connect(this.dry); out.connect(this.wet); o.start(t); o.stop(t + .1);
+  }
+};
+S.hush = function (b) {
+  if (!this.c || b === !!this._h) return;
+  this._h = b; this.out.gain.setTargetAtTime(b || !this.on ? 0 : .85, this.c.currentTime, .5);
+};
+
+// --- what the world adds on top of every movement ---
+const FX = { rain: [], parts: [], flash: 0, nextBolt: 0, thunderAt: -1, birdT: 2, lastSec: -1, mid: false, burstT: 0, puffT: 0 };
+function tint(c) { g.fillStyle = c; g.fillRect(0, 0, W, H); }
+function addPart(p) { if (FX.parts.length < 320) FX.parts.push(p); }
+function worldFX(dt) {
+  clockTick();
+  const wx = LIVE.wx, paperM = !!(cur && cur.paper);
+  g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  // the light of the hour
+  if (SUN.alt > -.5 && SUN.alt < 6) tint(`rgba(255,170,90,${.06 * Math.max(0, 1 - Math.abs(SUN.alt - 3) / 3.5)})`);
+  else if (SUN.alt > -6 && SUN.alt <= -.5) tint('rgba(70,100,200,.06)');
+  if (DAY.longest) tint('rgba(255,200,120,.035)');   // the longest day: a little more light all day
+  if (DAY.shortest) tint('rgba(40,60,140,.045)');    // the shortest: a little more night
+  if (wx && wx.temp != null) {
+    if (wx.temp < 0) tint(`rgba(150,190,255,${Math.min(.07, -wx.temp * .006)})`);
+    else if (wx.temp > 28) tint(`rgba(255,140,70,${Math.min(.07, (wx.temp - 28) * .01)})`);
+  }
+  if (wx && wx.fog) {
+    const fg = g.createLinearGradient(0, 0, 0, H); fg.addColorStop(0, 'rgba(205,205,215,.04)'); fg.addColorStop(1, 'rgba(205,205,215,.2)');
+    g.fillStyle = fg; g.fillRect(0, 0, W, H);
+  }
+  if (LIVE.aq && LIVE.aq.pm > 35) tint(`rgba(170,150,110,${Math.min(.12, (LIVE.aq.pm - 35) * .002)})`);
+  if (LIVE.carbon === 'high' || LIVE.carbon === 'very high') tint('rgba(0,0,0,.08)');
+  if (T > 1200) tint(`rgba(5,4,7,${Math.min(.15, (T - 1200) / 6000)})`);
+  // rain and snow
+  const rainN = wx ? Math.round(wx.rain * 110) : 0, snowN = Math.round(Math.max(wx ? wx.snow : 0, THEME.kind === 'snow' ? .5 : 0) * 80);
+  const windX = wx ? clamp(wx.wind / 25, 0, 2.5) : 0;
+  while (FX.rain.length < rainN + snowN) { const s = FX.rain.length >= rainN; FX.rain.push({ x: rand(0, W), y: rand(-H, 0), s, r: rand(.8, 2.4), v: s ? rand(30, 70) : rand(500, 800), ph: rand(0, TAU) }); }
+  if (FX.rain.length > rainN + snowN) FX.rain.length = rainN + snowN;
+  if (FX.rain.length) {
+    g.strokeStyle = paperM ? 'rgba(40,40,60,.22)' : 'rgba(200,210,235,.22)'; g.lineWidth = 1; g.beginPath();
+    for (const p of FX.rain) if (!p.s) {
+      p.y += p.v * dt; p.x += windX * p.v * .12 * dt;
+      if (p.y > H) { p.y = rand(-40, 0); p.x = rand(-W * .2, W); }
+      g.moveTo(p.x, p.y); g.lineTo(p.x + windX * 3, p.y + 12);
+    }
+    g.stroke();
+    g.fillStyle = paperM ? 'rgba(120,130,160,.6)' : 'rgba(250,252,255,.75)'; g.beginPath();
+    for (const p of FX.rain) if (p.s) {
+      p.y += p.v * dt; p.x += (Math.sin(T * .8 + p.ph) * 12 + windX * 30) * dt;
+      if (p.y > H) { p.y = rand(-20, 0); p.x = rand(0, W); }
+      g.moveTo(p.x + p.r, p.y); g.arc(p.x, p.y, p.r, 0, TAU);
+    }
+    g.fill();
+  }
+  // storms
+  if (wx && wx.storm && T > FX.nextBolt) {
+    FX.nextBolt = T + rand(8, 25); FX.flash = 1; FX.thunderAt = T + rand(.6, 3); buzz(20);
+    if (cur && cur.thunder) cur.thunder();
+  }
+  if (FX.thunderAt > 0 && T > FX.thunderAt) { FX.thunderAt = -1; S.noise({ dur: 2.4, f: 160, ft: 'lowpass', g: .35, wet: .9 }); }
+  if (FX.flash > 0) { tint(`rgba(235,240,255,${FX.flash * .45})`); FX.flash = Math.max(0, FX.flash - dt * 3); }
+  themeFX(dt, paperM);
+  // the dawn chorus
+  if (SUN.alt > -6 && SUN.alt < 5 && CLK.h < 12) { FX.birdT -= dt; if (FX.birdT <= 0) { FX.birdT = rand(1.2, 5); S.chirp(); } }
+  // the last seconds of every hour
+  if (CLK.s !== FX.lastSec) {
+    FX.lastSec = CLK.s;
+    if (CLK.m === 59 && CLK.s >= 50) S.note(mtof(84 + (CLK.s - 50)), { g: .012, d: .12 });
+    if (CLK.m === 0 && CLK.s === 0 && curI !== 11) S.bell(mtof(57), 0, .4);
+  }
+  // exactly midnight: for one minute everything is inside out
+  const mid = CLK.h === 0 && CLK.m === 0;
+  if (mid !== FX.mid) { FX.mid = mid; cv.style.filter = mid ? 'invert(1) hue-rotate(180deg)' : ''; if (mid) { found('midnight'); S.bell(mtof(45), 0, 1); } }
+  // two minutes of silence on remembrance days
+  S.hush(THEME.kind === 'poppies' && CLK.h === 11 && CLK.m < 2);
+}
+function themeFX(dt, paperM) {
+  const k = THEME.kind; if (!k || reducedMotion) return;
+  const C = THEME.cols, pick = () => C[Math.random() * C.length | 0];
+  if (k === 'fireworks') {
+    FX.burstT -= dt;
+    if (FX.burstT <= 0) {
+      FX.burstT = rand(.9, 2.6);
+      const x = rand(.15, .85) * W, y = rand(.12, .45) * H, c = pick(), n = 36 + (Math.random() * 24 | 0);
+      for (let i = 0; i < n; i++) { const a = i / n * TAU, v = rand(60, 140); addPart({ k: 'spark', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, c, life: rand(1.2, 1.9) }); }
+      S.noise({ dur: .3, f: 600, ft: 'lowpass', g: .12, at: .05 }); for (let i = 0; i < 4; i++) S.note(rand(2500, 5000), { g: .008, d: .2, at: rand(.1, .6) });
+    }
+  } else if (k === 'lanterns' || k === 'halloween' || k === 'crescent') {
+    if (Math.random() < dt * 1.2) addPart({ k: 'orb', x: rand(0, W), y: H + 10, vx: rand(-6, 6), vy: -rand(18, 35), c: pick(), r: rand(3, 6), life: 14 });
+  } else if (k === 'colour') {
+    FX.puffT -= dt; if (FX.puffT <= 0) { FX.puffT = rand(1, 2.5); addPart({ k: 'puff', x: rand(0, W), y: rand(0, H), c: pick(), r: rand(60, 150), life: 3 }); }
+  } else if (k !== 'snow' && k !== 'lamps' && k !== 'candles' && k !== 'rest') {
+    if (Math.random() < dt * 2.2) addPart({ k: 'petal', x: rand(-20, W), y: -10, vx: rand(5, 25), vy: rand(20, 45), c: pick(), r: rand(2.5, 4.5), life: 20, rot: rand(0, TAU) });
+  }
+  for (let i = FX.parts.length - 1; i >= 0; i--) {
+    const p = FX.parts[i]; p.life -= dt;
+    if (p.life <= 0 || p.y > H + 20 || p.y < -60) { FX.parts.splice(i, 1); continue; }
+    if (p.k === 'spark') { p.vy += 40 * dt; p.vx *= Math.pow(.97, dt * 60); p.vy *= Math.pow(.97, dt * 60); }
+    if (p.k === 'petal') { p.vx += Math.sin(T + p.y * .02) * 10 * dt; p.rot += dt * 1.5; }
+    if (p.k !== 'puff') { p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt; }
+    g.globalAlpha = p.k === 'spark' ? Math.min(1, p.life) : p.k === 'puff' ? .25 * Math.sin(Math.PI * p.life / 3) : p.k === 'orb' ? .75 * Math.min(1, p.life / 3) : .7;
+    if (p.k === 'puff') { const rg = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r); rg.addColorStop(0, p.c); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = rg; g.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2); continue; }
+    g.fillStyle = p.c; g.beginPath();
+    if (p.k === 'petal') g.ellipse(p.x, p.y, p.r, p.r * .55, p.rot, 0, TAU);
+    else if (p.k === 'orb') { g.arc(p.x, p.y, p.r * 2.6, 0, TAU); g.globalAlpha *= .2; g.fill(); g.globalAlpha /= .2; g.beginPath(); g.arc(p.x, p.y, p.r, 0, TAU); }
+    else g.arc(p.x, p.y, 1.6, 0, TAU);
+    g.fill();
+  }
+  g.globalAlpha = 1;
+  if (k === 'lamps' || k === 'candles') {
+    const n = k === 'lamps' ? 9 : DAY.hanukkah + 1, sp = Math.min(34, W / (n + 2)), y0 = H - 18;
+    for (let i = 0; i < n; i++) {
+      const shamash = k === 'candles' && i === 0, x = W / 2 + (i - (n - 1) / 2) * sp, y = y0 - (shamash ? 10 : 0), fl = 1 + .15 * Math.sin(T * 9 + i * 2.1);
+      g.fillStyle = 'rgba(255,190,90,.18)'; g.beginPath(); g.arc(x, y - 4, 12 * fl, 0, TAU); g.fill();
+      g.fillStyle = '#ffd36b'; g.beginPath(); g.ellipse(x, y - 4, 2.2, 4.5 * fl, 0, 0, TAU); g.fill();
+    }
+  }
+  if (k === 'crescent') {
+    const x = W * .84, y = H * .12, r = Math.min(W, H) * .035;
+    g.fillStyle = 'rgba(255,231,163,.9)'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+    g.fillStyle = paperM ? '#ebe4d6' : '#050407'; g.beginPath(); g.arc(x + r * .45, y - r * .15, r * .9, 0, TAU); g.fill();
+  }
+}
+
+// --- the hidden constellation: the secrets you can find by doing something ---
+const DOABLE = ['wink', 'sleep', 'timestop', 'trinity', 'figure', 'bottom', 'fibonacci', 'unison', 'resonance', 'circle', 'horizon', 'erase', 'strum', 'cone', 'listen', 'bloom'];
+function eyePt(i) {
+  const cx = W * .5, cy = H * .2, w = Math.min(W * .36, H * .3), h = w * .42;
+  if (i < 12) { const U = [-1, -.66, -.33, 0, .33, .66, 1, .66, .33, 0, -.33, -.66], u = U[i], sg = i > 0 && i < 6 ? -1 : i > 6 ? 1 : 0; return [cx + u * w, cy + sg * h * (1 - u * u)]; }
+  if (i < 15) { const a = -Math.PI / 2 + (i - 12) * TAU / 3; return [cx + Math.cos(a) * h * .55, cy + Math.sin(a) * h * .55]; }
+  return [cx, cy];
+}
+const allDoable = () => DOABLE.every(id => MEM.found[id]);
+
+// ======================================================================
+// XIII. MURMUR — every new page written anywhere on Wikipedia, as it
+//       happens. Humanity writing, heard as a field of small lights.
+// ======================================================================
+function Murmur() {
+  let es = null, pts = [], last = 0, live = false, synth = 0, holdT = -1, listened = false, opened = 0;
+  const lastBy = new Map();
+  const hash = s => { let h = 7; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) | 0; return h >>> 0; };
+  function add(db, len, bot) {
+    if (pts.length > 700) pts.shift();
+    const h = hash(db || 'x'), a = (h % 360) * RAD + rand(-.06, .06), r = clamp(.14 + Math.log10(1 + Math.max(0, len || 0)) * .17, .12, 1);
+    const p = { a, r, t: 0, bot, h, prev: lastBy.get(h) || null };
+    lastBy.set(h, p); pts.push(p);
+    if (T - last > .07) { last = T; S.note(scaleNote(57, h % 12), { g: bot ? .008 : .022, d: 1.4, pan: Math.cos(a) * .7 }); }
+  }
+  const pos = p => { const R = Math.min(W, H) * .46; return [W / 2 + Math.cos(p.a) * p.r * R, H / 2 + Math.sin(p.a) * p.r * R]; };
+  return {
+    dur: 60, hiddenTitle: 'someone is writing something',
+    enter() {
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H); opened = T;
+      S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .2, 500);
+      const save = navigator.connection && navigator.connection.saveData;
+      if (!save && typeof EventSource !== 'undefined' && navigator.onLine) {
+        try {
+          es = new EventSource('https://stream.wikimedia.org/v2/stream/page-create');
+          es.onmessage = ev => { try { const d = JSON.parse(ev.data); live = true; add(d.database, d.rev_len, d.performer && d.performer.user_is_bot); } catch (e) {} };
+        } catch (e) { es = null; }
+      }
+    },
+    exit() { if (es) es.close(); es = null; },
+    down() { holdT = T; },
+    move(p) { if (p.moved > 20) holdT = -1; },
+    up() { holdT = -1; },
+    frame(dt) {
+      if (!live && T - opened > 6) { synth += dt * 2.5; while (synth > 1) { synth--; add('w' + (Math.random() * 30 | 0), Math.random() * 5000, Math.random() < .3); } }
+      const listening = holdT > 0 && P.size && T - holdT > 10;
+      if (listening && !listened) { listened = true; found('listen'); S.bell(mtof(50), 0, .7); }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = 'rgba(5,4,7,.18)'; g.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'lighter';
+      g.strokeStyle = 'rgba(236,228,214,.05)'; g.lineWidth = 1; g.beginPath();
+      for (const p of pts) if (p.prev && p.t < 8) { const [x, y] = pos(p), [x2, y2] = pos(p.prev); g.moveTo(x, y); g.lineTo(x2, y2); }
+      g.stroke();
+      if (listened) { g.strokeStyle = 'rgba(255,207,107,.05)'; g.beginPath(); for (const p of pts) { const [x, y] = pos(p); g.moveTo(W / 2, H / 2); g.lineTo(x, y); } g.stroke(); }
+      for (let i = pts.length - 1; i >= 0; i--) {
+        const p = pts[i]; if (!holdT || holdT < 0 || !P.size) p.t += dt;
+        if (p.t > 9) { pts.splice(i, 1); continue; }
+        const [x, y] = pos(p), a = Math.max(0, 1 - p.t / 9);
+        g.fillStyle = p.bot ? `rgba(120,140,200,${a * .5})` : `rgba(${(p.h % 2) ? '255,150,110' : '236,228,214'},${a * .9})`;
+        g.beginPath(); g.arc(x, y, p.bot ? 1.2 : 2, 0, TAU); g.fill();
+        if (p.t < 1.2) { g.strokeStyle = `rgba(236,228,214,${(1 - p.t / 1.2) * .3})`; g.beginPath(); g.arc(x, y, 3 + p.t * 22, 0, TAU); g.stroke(); }
+      }
+      g.globalCompositeOperation = 'source-over';
+    }
+  };
+}
+
+// ======================================================================
+// XIV. TODAY — a pattern grown from one simple rule, seeded by the hour.
+//      Everyone on Earth sees the same one right now. Touch it, and
+//      from that moment on, your version is yours alone.
+// ======================================================================
+function Today() {
+  const NC = 128, RULES = [30, 45, 73, 90, 105, 110, 150, 54, 60, 126, 22, 18, 146, 129, 137, 193];
+  let rule = 30, base, mine, gen = 0, hourStart = 0, rows = [], cvs = null, cx2 = null, nRows = 0, cs = 3, coned = false, key = -1, lastSound = 0;
+  const step = (row, out) => { for (let i = 0; i < NC; i++) { const l = i ? row[i - 1] : 0, c = row[i], r = i < NC - 1 ? row[i + 1] : 0; out[i] = (rule >> ((l << 2) | (c << 1) | r)) & 1; } };
+  function init() {
+    const d = new Date(); hourStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours());
+    key = d.getUTCFullYear() * 1e6 + (d.getUTCMonth() + 1) * 1e4 + d.getUTCDate() * 100 + d.getUTCHours();
+    const r = rng(key); rule = RULES[r() * RULES.length | 0];
+    base = new Uint8Array(NC); for (let i = 0; i < NC; i++) base[i] = r() < .5 ? 1 : 0;
+    cs = W / NC; nRows = Math.ceil(H / cs) + 1; rows = []; gen = 0; coned = false;
+    cvs = mk(NC, nRows); cx2 = cvs.getContext('2d');
+    const target = Math.floor((Date.now() - hourStart) / 500), tmp = new Uint8Array(NC);
+    for (; gen < target; gen++) { step(base, tmp); base.set(tmp); if (target - gen <= nRows) rows.push(base.slice()); }
+    mine = base.slice(); rows = rows.map(b => [b, b]);
+  }
+  return {
+    dur: 55, hiddenTitle: 'everyone is seeing this',
+    enter() { init(); S.drone([mtof(41), mtof(48), mtof(53), mtof(60)], .22, 600); },
+    resize() { init(); },
+    up(p) {
+      if (p.moved > 12) return;
+      const i = clamp(Math.floor(p.x / cs), 0, NC - 1); mine[i] ^= 1;
+      S.note(scaleNote(53, i % 15), { g: .05, d: 2 }); buzz(10);
+    },
+    frame() {
+      const d = new Date(), k = d.getUTCFullYear() * 1e6 + (d.getUTCMonth() + 1) * 1e4 + d.getUTCDate() * 100 + d.getUTCHours();
+      if (k !== key) init();
+      const target = Math.floor((Date.now() - hourStart) / 500), tb = new Uint8Array(NC), tm = new Uint8Array(NC);
+      let guard = 50;
+      while (gen < target && guard-- > 0) {
+        step(base, tb); base.set(tb); step(mine, tm); mine.set(tm); gen++;
+        rows.push([base.slice(), mine.slice()]); if (rows.length > nRows) rows.shift();
+        if (T - lastSound > .45) { lastSound = T; let on = 0; for (let i = 56; i < 72; i++) on += base[i]; S.note(scaleNote(53, on % 15), { g: .018, d: 1.2, type: 'triangle' }); }
+        if (!coned && mine[0] !== base[0] && mine[NC - 1] !== base[NC - 1]) { coned = true; found('cone'); S.bell(mtof(53), 0, .7); }
+      }
+      const id = cx2.createImageData(NC, nRows), D = id.data, off = nRows - rows.length;
+      for (let j = 0; j < rows.length; j++) {
+        const [b, m] = rows[j];
+        for (let i = 0; i < NC; i++) {
+          const o = ((j + off) * NC + i) * 4, diff = b[i] !== m[i];
+          if (diff) { D[o] = 255; D[o + 1] = m[i] ? 106 : 40; D[o + 2] = m[i] ? 77 : 30; }
+          else if (b[i]) { D[o] = 236; D[o + 1] = 228; D[o + 2] = 214; }
+          else { D[o] = 5; D[o + 1] = 4; D[o + 2] = 7; }
+          D[o + 3] = 255;
+        }
+      }
+      cx2.putImageData(id, 0, 0);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      g.imageSmoothingEnabled = false;
+      g.drawImage(cvs, 0, H - nRows * cs, W, nRows * cs);
+      g.imageSmoothingEnabled = true;
+    }
+  };
+}
+
+// ======================================================================
+// XV. PENDULUMS — eighteen pendulums, timed by the gravity where you
+//     stand, released together at the top of every real minute.
+//     Strum them.
+// ======================================================================
+function Pendulums() {
+  const N = 18, N0 = 30, CYCLE = 60;
+  const sl = Math.sin(CTX.lat * RAD), gL = 9.780327 * (1 + .0053024 * sl * sl - .0000058 * Math.sin(2 * CTX.lat * RAD) ** 2);
+  const L = [...Array(N)].map((_, i) => gL * (CYCLE / (TAU * (N0 + i))) ** 2);
+  const sg = new Array(N).fill(0), strum = new Map(), flash = new Array(N).fill(0);
+  let lastN = 0, goldT = -9;
+  const geo = () => { const px = (H * .74) / L[0], sp = W / (N + 1); return { px, sp, top: H * .06 }; };
+  const bob = (i, th, G) => { const x0 = G.sp * (i + 1), len = L[i] * G.px; return [x0 + Math.sin(th) * len, G.top + Math.cos(th) * len]; };
+  const theta = i => .3 * Math.cos(TAU * (N0 + i) * ((Date.now() / 1000) % CYCLE) / CYCLE);
+  return {
+    dur: 60, hiddenTitle: 'they will line up again at the top of the minute',
+    enter() { S.drone([mtof(43), mtof(50), mtof(55), mtof(62)], .2, 700); },
+    move(p) {
+      const G = geo();
+      for (let i = 0; i < N; i++) {
+        const [x, y] = bob(i, theta(i), G);
+        if (Math.hypot(p.x - x, p.y - y) < Math.max(18, G.sp * .45) && !(strum.get(i) > T - .4)) {
+          strum.set(i, T); flash[i] = 1; S.note(scaleNote(50, i), { g: .05, d: 2.2, pan: x / W * 2 - 1 });
+        }
+      }
+      let n = 0; for (const t of strum.values()) if (t > T - 1.2) n++;
+      if (n >= N - 1 && T - goldT > 5) { goldT = T; found('strum'); [0, 4, 7, 12].forEach((k, j) => S.note(scaleNote(50, k + 5), { g: .05, d: 4, at: j * .08 })); }
+    },
+    frame(dt) {
+      const G = geo();
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = 'rgba(5,4,7,.35)'; g.fillRect(0, 0, W, H);
+      g.fillStyle = 'rgba(236,228,214,.15)'; g.fillRect(G.sp * .5, G.top - 1, W - G.sp, 1.5);
+      const gold = clamp(1 - (T - goldT) / 4, 0, 1);
+      for (let i = 0; i < N; i++) {
+        const th = theta(i), [x, y] = bob(i, th, G), s = Math.sign(th);
+        if (s > 0 && sg[i] < 0 && T - lastN > .08) { lastN = T; S.note(scaleNote(50, i), { g: .018, d: 1.2, pan: x / W * 2 - 1, wet: .7 }); }
+        sg[i] = s; flash[i] = Math.max(0, flash[i] - dt * 1.5);
+        g.strokeStyle = 'rgba(236,228,214,.25)'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(G.sp * (i + 1), G.top); g.lineTo(x, y); g.stroke();
+        const hue = 20 + i * 12, r = Math.max(4, G.sp * .26);
+        g.fillStyle = gold > 0 ? `rgba(255,207,107,${.6 + gold * .4})` : `hsl(${hue},${60 + flash[i] * 35}%,${58 + flash[i] * 25}%)`;
+        g.beginPath(); g.arc(x, y, r * (1 + flash[i] * .4), 0, TAU); g.fill();
+      }
+    }
+  };
+}
+
+// ======================================================================
+// XVI. SKIN — two imaginary chemicals that make spots, stripes, coral
+//      and mazes (Gray–Scott reaction-diffusion). Today's pattern is set
+//      by the date and the weather. Paint with them.
+// ======================================================================
+function Skin() {
+  const PRESETS = [[.0367, .0649], [.0545, .062], [.029, .057], [.039, .058], [.026, .051], [.034, .0618], [.042, .059]];
+  let gw = 0, gh = 0, A, B, A2, B2, cvs, cx2, id, f = .0367, k = .0649, touched = false, chk = 0, bloomed = false;
+  function init() {
+    gw = 110; gh = clamp(Math.round(gw * H / W), 60, 230);
+    A = new Float32Array(gw * gh).fill(1); B = new Float32Array(gw * gh); A2 = new Float32Array(gw * gh); B2 = new Float32Array(gw * gh);
+    for (let s = 0; s < 7; s++) {
+      const cx = Math.round(gw * rand(.35, .65)), cy = Math.round(gh * rand(.35, .65));
+      for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) B[(cy + y) * gw + cx + x] = 1;
+    }
+    cvs = mk(gw, gh); cx2 = cvs.getContext('2d'); id = cx2.createImageData(gw, gh);
+    const doy = Math.floor((Date.now() - new Date(DAY.y, 0, 0)) / 864e5);
+    [f, k] = PRESETS[(doy + MEM.visits) % PRESETS.length];
+    if (LIVE.wx && LIVE.wx.temp != null) f = clamp(f + (LIVE.wx.temp - 15) * .00012, .02, .07);
+  }
+  function paint(px, py) {
+    const cx = Math.round(px / W * gw), cy = Math.round(py / H * gh);
+    for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) { const X = cx + x, Y = cy + y; if (X > 0 && Y > 0 && X < gw - 1 && Y < gh - 1 && x * x + y * y < 10) B[Y * gw + X] = 1; }
+    touched = true;
+  }
+  return {
+    dur: 60, hiddenTitle: 'it is still growing patterns',
+    enter() { init(); S.drone([mtof(36), mtof(43), mtof(48), mtof(55)], .2, 450); },
+    resize() { init(); },
+    down(p) { paint(p.x, p.y); S.noise({ dur: .3, f: 900, q: 2, g: .03 }); },
+    move(p) { paint(p.x, p.y); },
+    shake() { for (let i = 0; i < 40; i++) paint(rand(0, W), rand(0, H)); },
+    frame(dt) {
+      for (let it = 0; it < 10; it++) {
+        for (let y = 1; y < gh - 1; y++) for (let x = 1; x < gw - 1; x++) {
+          const i = y * gw + x, a = A[i], b = B[i];
+          const la = -a + .2 * (A[i - 1] + A[i + 1] + A[i - gw] + A[i + gw]) + .05 * (A[i - gw - 1] + A[i - gw + 1] + A[i + gw - 1] + A[i + gw + 1]);
+          const lb = -b + .2 * (B[i - 1] + B[i + 1] + B[i - gw] + B[i + gw]) + .05 * (B[i - gw - 1] + B[i - gw + 1] + B[i + gw - 1] + B[i + gw + 1]);
+          const r = a * b * b;
+          A2[i] = clamp(a + la - r + f * (1 - a), 0, 1); B2[i] = clamp(b + .5 * lb + r - (k + f) * b, 0, 1);
+        }
+        let t = A; A = A2; A2 = t; t = B; B = B2; B2 = t;
+      }
+      const D = id.data, C = THEME.cols ? THEME.cols[0] : null;
+      for (let i = 0; i < gw * gh; i++) {
+        const v = clamp((B[i] - .08) * 3.2, 0, 1), o = i * 4;
+        if (v < .5) { const u = v * 2; D[o] = lerp(5, 255, u); D[o + 1] = lerp(4, 106, u); D[o + 2] = lerp(7, 77, u); }
+        else { const u = (v - .5) * 2; D[o] = lerp(255, 243, u); D[o + 1] = lerp(106, 233, u); D[o + 2] = lerp(77, 220, u); }
+        D[o + 3] = 255;
+      }
+      cx2.putImageData(id, 0, 0);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.drawImage(cvs, 0, 0, W, H);
+      if (C) { g.globalAlpha = .12; g.fillStyle = C; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
+      chk -= dt;
+      if (chk <= 0 && touched && !bloomed) {
+        chk = 1;
+        let t = 0, b = 0, l = 0, r = 0;
+        for (let x = 1; x < gw - 1; x++) { if (B[gw + x] > .25) t = 1; if (B[(gh - 2) * gw + x] > .25) b = 1; }
+        for (let y = 1; y < gh - 1; y++) { if (B[y * gw + 1] > .25) l = 1; if (B[y * gw + gw - 2] > .25) r = 1; }
+        if (t && b && l && r) { bloomed = true; found('bloom'); S.bell(mtof(48), 0, .7); }
+      }
+    }
+  };
+}
+
+// --- the visitor's own history: milestones, unusual hours, what's new since last time ---
+const MILESTONE = [10, 50, 100, 250, 500, 1000].includes(MEM.visits);
+if (MILESTONE) found('visit' + MEM.visits);
+if (!Array.isArray(MEM.hours) || MEM.hours.length !== 24) MEM.hours = new Array(24).fill(0);
+const STRANGER = MEM.visits > 5 && !MEM.hours[new Date().getHours()];
+if (STRANGER) found('stranger');
+MEM.hours[new Date().getHours()]++;
+const UPDATED = MEM.visits > 1 && (MEM.ver | 0) < VERSION;   // new movements were added since this visitor's last visit
+MEM.ver = VERSION; saveMem();
+// a day that shouldn't exist: everything is mirrored
+const MIRROR = DAY.leap;
+if (MIRROR) { cv.style.transform = 'scaleX(-1)'; found('leap'); }
+
 // ======================================================================
 // conductor
 // ======================================================================
-const MOVES = [Shy, Unbreaking, Cave, Asemic, Droste, Absence, Sunflower, Bodies, Butterfly, Chladni, Epicycles, Relativity];
+const MOVES = [Shy, Unbreaking, Cave, Asemic, Droste, Absence, Sunflower, Bodies, Butterfly, Chladni, Epicycles, Relativity, Murmur, Today, Pendulums, Skin];
 const TITLE = 'timesbane';
 let T = 0, last = performance.now(), started = false, ign = -1;
 let cur = null, curI = -1, nextI = -1, phase = 'idle', fade = 0, mStart = 0, lastInput = 0, lastDown = { t: -9, x: 0, y: 0 };
@@ -1942,12 +2712,18 @@ function intro(dt) {
     const a = i / n * TAU + T * .05, r = 42 + (i % 3) * 15;
     g.fillStyle = 'rgba(236,228,214,.25)'; g.fillRect(cx + Math.cos(a) * r - .8, cy + Math.sin(a) * r - .8, 1.6, 1.6);
   }
+  // returning visitors: one ember point for each movement they have never seen
+  if (MEM.visits > 1) {
+    const fr = MOVES.map((_, i) => i).filter(i => !MEM.seen[i]);
+    fr.forEach((_, j) => { const a = -T * .2 + j / fr.length * TAU; g.fillStyle = `rgba(255,106,77,${UPDATED ? .75 : .45})`; g.beginPath(); g.arc(cx + Math.cos(a) * 26, cy + Math.sin(a) * 26, 1.4, 0, TAU); g.fill(); });
+  }
+  if (MILESTONE) { g.strokeStyle = 'rgba(255,207,107,.35)'; g.lineWidth = 1; g.beginPath(); g.arc(cx, cy, 60 + Math.sin(T) * 3, 0, TAU); g.stroke(); }
   if (ign < 0) {
     const gr = g.createRadialGradient(cx, cy, 0, cx, cy, 34 + br * 10);
     gr.addColorStop(0, `rgba(255,120,80,${.18 + br * .1})`); gr.addColorStop(1, 'rgba(255,120,80,0)');
     g.fillStyle = gr; g.fillRect(cx - 50, cy - 50, 100, 100);
     if (TWIN) for (const sgn of [-1, 1]) { g.fillStyle = '#f3ebdf'; g.beginPath(); g.arc(cx + Math.cos(T * .9) * 12 * sgn, cy + Math.sin(T * .9) * 12 * sgn, 2.6 + br, 0, TAU); g.fill(); }
-    else { g.fillStyle = '#f3ebdf'; g.beginPath(); g.arc(cx, cy, 3 + br * 1.3, 0, TAU); g.fill(); }
+    else { g.fillStyle = STRANGER ? '#bcd0ff' : '#f3ebdf'; g.beginPath(); g.arc(cx, cy, 3 + br * 1.3, 0, TAU); g.fill(); }
     if (T > 5) {
       const k = (T % 4.5) / 4.5;
       g.strokeStyle = `rgba(236,228,214,${(1 - k) * .22})`; g.lineWidth = 1;
@@ -1970,11 +2746,13 @@ function loop(now) {
   // when the phone is nearly out of battery, the piece is tired too
   const tired = !!(BAT && !BAT.charging && BAT.level < .15);
   if (tired) { dt *= .65; if (started && !SESSION.tired) { SESSION.tired = true; found('tired'); } }
+  if (started) dt *= tempo();
   T += dt;
   if (hasTilt) { TILT.x = lerp(TILT.x, tiltRaw.x, .08); TILT.y = lerp(TILT.y, tiltRaw.y, .08); TILT.rx = TILT.x; TILT.ry = TILT.y; }
   else if (HOVER.t > 0) { TILT.x = lerp(TILT.x, (HOVER.x / W - .5) * .8, .04); TILT.y = lerp(TILT.y, (HOVER.y / H - .5) * .8, .04); }
   if (!started) { intro(dt); return; }
   cur.frame(dt);
+  worldFX(dt);
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   if (phase === 'out') { fade = Math.min(1, fade + dt / 1.1); if (fade >= 1) { enterMove(nextI); phase = 'in'; } }
   else if (phase === 'in') { fade = Math.max(0, fade - dt / 1.6); if (fade <= 0) phase = 'idle'; }
@@ -2001,7 +2779,8 @@ cv.addEventListener('pointerdown', e => {
   e.preventDefault();
   if (!started) return;
   try { cv.setPointerCapture(e.pointerId); } catch (_) {}
-  const p = { id: e.pointerId, x: e.clientX, y: e.clientY, px: e.clientX, py: e.clientY, dx: 0, dy: 0, sx: e.clientX, sy: e.clientY, t0: T, moved: 0 };
+  const ex = MIRROR ? W - e.clientX : e.clientX;
+  const p = { id: e.pointerId, x: ex, y: e.clientY, px: ex, py: e.clientY, dx: 0, dy: 0, sx: ex, sy: e.clientY, t0: T, moved: 0 };
   P.set(e.pointerId, p); lastInput = T;
   if (P.size === 1) REC.start(p);
   if (P.size === 2) { const [a, b] = [...P.values()]; swipe = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, t: T, done: false }; }
@@ -2014,9 +2793,9 @@ cv.addEventListener('pointerdown', e => {
   if (dbl && cur.dbl) cur.dbl(p);
 });
 cv.addEventListener('pointermove', e => {
-  if (e.pointerType === 'mouse') { HOVER.x = e.clientX; HOVER.y = e.clientY; HOVER.t = T; }
+  if (e.pointerType === 'mouse') { HOVER.x = MIRROR ? W - e.clientX : e.clientX; HOVER.y = e.clientY; HOVER.t = T; }
   const p = P.get(e.pointerId); if (!p) return;
-  p.px = p.x; p.py = p.y; p.x = e.clientX; p.y = e.clientY; p.dx = p.x - p.px; p.dy = p.y - p.py;
+  p.px = p.x; p.py = p.y; p.x = MIRROR ? W - e.clientX : e.clientX; p.y = e.clientY; p.dx = p.x - p.px; p.dy = p.y - p.py;
   p.moved += Math.hypot(p.dx, p.dy); lastInput = T;
   REC.move(p);
   if (swipe && !swipe.done && P.size === 2 && phase === 'idle') {
@@ -2062,6 +2841,46 @@ document.addEventListener('visibilitychange', () => {
     if (started && cur && cur.away) cur.away(away);
   }
 });
+// ---------- desktop: the mouse, the wheel and the keys stand in for touch and motion ----------
+if (DESK) document.body.classList.add('desk');
+addEventListener('wheel', e => { if (!started || phase === 'out' || !cur) return; e.preventDefault(); lastInput = T; if (cur.wheel) cur.wheel(clamp(e.deltaY, -120, 120), e); }, { passive: false });
+cv.addEventListener('contextmenu', e => { if (started && cur && cur.dbl && phase !== 'out') cur.dbl({ x: MIRROR ? W - e.clientX : e.clientX, y: e.clientY }); });
+let keyHold = null;
+addEventListener('keydown', e => {
+  KEYS.shift = e.shiftKey;
+  if (!started || e.repeat || !cur) return;
+  const k = e.key.toLowerCase();
+  if (e.key === 'ArrowRight') { whoosh(false); go(nextIdx()); }
+  else if (e.key === 'ArrowLeft') { if (HIST.length) { whoosh(true); goBack(); } }
+  else if (k === 'm') document.getElementById('sd').click();
+  else if (k === 'f') { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch (er) {} }
+  else if (k === 's') { if (cur.shake && phase === 'idle') cur.shake(1.2); }
+  else if (k === 'r') go(randomOther());
+  else if (e.key === ' ' && !keyHold) {   // the space bar is a held finger, wherever the mouse is
+    e.preventDefault(); S.init();
+    const x = HOVER.t > 0 ? HOVER.x : W / 2, y = HOVER.t > 0 ? HOVER.y : H / 2;
+    keyHold = { id: 'key', x, y, px: x, py: y, dx: 0, dy: 0, sx: x, sy: y, t0: T, moved: 0 };
+    P.set('key', keyHold); lastInput = T; if (cur.down) cur.down(keyHold);
+  }
+});
+addEventListener('keyup', e => {
+  KEYS.shift = e.shiftKey;
+  if (e.key === ' ' && keyHold) { P.delete('key'); const p = keyHold; keyHold = null; lastInput = T; if (cur && cur.up) cur.up(p); }
+});
+addEventListener('blur', () => { KEYS.shift = false; if (keyHold) { P.delete('key'); keyHold = null; } });
+// shaking the mouse is shaking the phone; an idle mouse disappears
+const JIG = { sx: 0, flips: [], t: 0, idle: 0 };
+cv.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse') return;
+  document.body.classList.remove('idle'); clearTimeout(JIG.idle); JIG.idle = setTimeout(() => document.body.classList.add('idle'), 3000);
+  if (!started) return;
+  const dx = e.movementX || 0; if (Math.abs(dx) < 18) return;
+  const sg = Math.sign(dx); if (sg !== JIG.sx) { JIG.sx = sg; JIG.flips.push(T); }
+  JIG.flips = JIG.flips.filter(t => T - t < .6);
+  if (JIG.flips.length >= 5 && T - JIG.t > .9 && cur && cur.shake && phase === 'idle') { JIG.t = T; JIG.flips = []; cur.shake(1.1); buzz(30); }
+});
+// offline, and updated quietly: a service worker keeps a copy of the piece in this browser
+if ('serviceWorker' in navigator && location.protocol === 'https:') addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
 if (document.fonts && document.fonts.load) document.fonts.load('italic 500 24px "Cormorant Garamond"').catch(() => {});
 </script>
 </body>
