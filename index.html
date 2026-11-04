@@ -289,6 +289,24 @@ addEventListener('deviceorientation', e => {
   tiltRaw.x = clamp(e.gamma / 40, -1, 1);
   tiltRaw.y = clamp((e.beta - 50) / 40, -1, 1);
 });
+// Accelerometer: e = how restless the phone is (≈0 when held perfectly still); a sharp jolt is a shake.
+const MOTION = { has: false, e: 0, last: null, shakeT: -9 };
+addEventListener('devicemotion', ev => {
+  const a = ev.accelerationIncludingGravity || ev.acceleration;
+  if (!a || a.x == null) return;
+  MOTION.has = true;
+  const L = MOTION.last;
+  if (L) {
+    const d = Math.abs(a.x - L.x) + Math.abs(a.y - L.y) + Math.abs(a.z - L.z);
+    MOTION.e = MOTION.e * .9 + d * .1;
+    if (d > 18 && T - MOTION.shakeT > .7 && started && phase === 'idle' && cur && cur.shake) {
+      MOTION.shakeT = T; lastInput = T;
+      cur.shake(clamp(d / 30, .5, 2)); buzz(30);
+    }
+  }
+  MOTION.last = { x: a.x, y: a.y, z: a.z };
+});
+const restless = () => MOTION.has && MOTION.e > 1.1;
 
 // ======================================================================
 // I. SHY — the act of looking stops the thing you look at.
@@ -328,6 +346,11 @@ function Shy() {
       S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .5, 700);
     },
     resize() { layout(); },
+    shake(k) {
+      o = 0; lastTouch = T; ts = 3;
+      for (const q of ps) { const a = rand(0, TAU), v = rand(2, 9) * k; q.vx += Math.cos(a) * v; q.vy += Math.sin(a) * v; }
+      S.noise({ dur: .5, f: 900, ft: 'lowpass', g: .12 }); S.note(mtof(26 + 12), { g: .12, d: 1.5, glide: 1.4 });
+    },
     down() { S.cut(160, .25); S.lvl(.22, .4); },
     up(p) {
       if (P.size) return;
@@ -345,6 +368,7 @@ function Shy() {
       ts = lerp(ts, touching ? .012 : 1, 1 - Math.exp(-dt * (touching ? 7 : 1.1)));
       lt += dt * ts;
       if (touching) o = Math.max(0, o - dt * 1.6);
+      else if (restless()) { o = Math.max(0, o - dt * .5); lastTouch = Math.max(lastTouch, T - 2); }
       else if (T - lastTouch > 3.5) o = Math.min(1, o + dt / 15);
       const oe = o * o * (3 - 2 * o);
       if (oe > .75 && !opened) {
@@ -531,6 +555,15 @@ function Unbreaking() {
     },
     resize() { for (const o of objs) for (const s of o.sh) { s.x = clamp(s.x, 6, W - 6); s.y = clamp(s.y, 6, H - 6); } },
     up(p) { if (p.moved < 14) tap(p.x, p.y); },
+    shake(k) {
+      lastAct = T;
+      let broke = false;
+      for (const o of objs) {
+        if (o.state === 'whole' || o.state === 'gather') { shatter(o); broke = true; }
+        else if (o.state === 'debris') for (const s of o.sh) { s.vx += rand(-14, 14) * k; s.vy += rand(-14, 14) * k; s.vr += rand(-.5, .5) * k; }
+      }
+      if (!broke) { S.noise({ dur: .35, f: 3500, ft: 'highpass', g: .1 }); for (let i = 0; i < 12; i++) S.note(rand(2500, 5500), { g: .012, d: rand(.05, .15), at: rand(0, .35), pan: rand(-1, 1) }); }
+    },
     move(p) {
       let hit = false;
       for (const o of objs) if (o.state === 'debris') for (const s of o.sh) {
@@ -697,6 +730,7 @@ function Cave() {
     move(p) { vX += p.dx * .0035; vY += p.dy * .0035; },
     up(p) { if (p.moved < 10 && T - p.t0 < .35) { glow = 3; S.note(scaleNote(57, 0), { g: .05, d: 2.5 }); S.note(scaleNote(57, 4), { g: .04, d: 2.5, at: .07 }); } },
     dbl() { next(); },
+    shake(k) { vX += rand(-.12, .12) * k; vY += rand(-.12, .12) * k; glow = 3; },
     frame(dt) {
       fc++;
       const d60 = dt * 60;
@@ -938,6 +972,7 @@ function Droste() {
     enter() { setup(); S.drone([mtof(36), mtof(43), mtof(48), mtof(55)], .35, 800); },
     resize() { setup(); },
     exit() { if (voice) voice.end(); voice = null; },
+    shake(k) { z = 1.06 + .02 * k; hue += 120; S.bell(mtof(43), 0, .7); },
     down(p) {
       holdT = T; ha = { x: p.x, y: p.y }; prev.set(p.id, { x: p.x, y: p.y });
       if (!voice) { voice = S.voice(.06); if (voice) voice.set(freq(p.y)); }
@@ -1027,6 +1062,14 @@ function Absence() {
     },
     exit() { if (voice) voice.end(); voice = null; },
     away(sec) { G += sec * .35; if (sec > 2) chord(); },
+    shake(k) {
+      let n = 0;
+      for (const b of bs) if (b.vis && !b.kids && !b.fallen && G > b.birth + b.dur && Math.random() < .35 * k && petals.length < 600) {
+        b.fallen = true; n++; petals.push({ x: b.x1, y: b.y1, vx: rand(-1.5, 1.5) * k, vy: rand(-1, .5), r: b.bsz, c: b.col, life: 1 });
+      }
+      S.noise({ dur: .9, f: 1800, q: .6, g: .07 });
+      if (n) [0, 4, 7].forEach((q, i) => S.note(scaleNote(63, q + 5), { g: .03, d: 2.5, at: i * .09 }));
+    },
     down(p) { holdG = G; vx = p.x; vy = p.y; },
     frame(dt) {
       const holding = P.size > 0, f0 = P.values().next().value;
@@ -1199,6 +1242,7 @@ function Bodies() {
       else add(p.x, p.y, 0, 0, .5);
     },
     dbl() { eight(); [0, 2, 4].forEach((k, i) => S.note(scaleNote(50, k), { g: .05, d: 3, at: i * .1 })); },
+    shake(k) { for (const b of B) { b.vx += rand(-.18, .18) * k; b.vy += rand(-.18, .18) * k; } perturbed = true; born = T; S.note(mtof(38), { g: .1, d: 2, glide: 1.3 }); },
     frame(dt) {
       const steps = 30, h = dt * .95 / steps;
       for (let s = 0; s < steps; s++) step(h);
@@ -1259,6 +1303,7 @@ function Butterfly() {
       S.drone([mtof(40), mtof(47), mtof(52), mtof(59)], .3, 650);
     },
     move(p) { vphi += p.dx * .0035; },
+    shake(k) { for (const p of ps) { p[0] += rand(-1, 1) * .02 * k; p[1] += rand(-1, 1) * .02 * k; } vphi += rand(-.05, .05); S.noise({ dur: .4, f: 2400, g: .06 }); },
     up(p) {
       if (p.moved > 10) return;
       let best = 0, bd = Infinity;
@@ -1326,6 +1371,11 @@ function Chladni() {
     resize() { const os = side, oox = ox, ooy = oy; layout(); for (let i = 0; i < NG; i++) { G[2 * i] = ox + (G[2 * i] - oox) / os * side; G[2 * i + 1] = oy + (G[2 * i + 1] - ooy) / os * side; } },
     down(p) { cell = -1; touch(p); },
     move(p) { touch(p); },
+    shake(k) {
+      const j = side * .25 * k;
+      for (let i = 0; i < NG; i++) { G[2 * i] = clamp(G[2 * i] + rand(-j, j), ox, ox + side); G[2 * i + 1] = clamp(G[2 * i + 1] + rand(-j, j), oy, oy + side); }
+      S.noise({ dur: .6, f: 5000, ft: 'highpass', g: .08 }); amp = 2.4; lastMode = T;
+    },
     frame(dt) {
       amp = lerp(amp, 1, 1 - Math.exp(-dt * .6));
       if (T - lastMode > 8 && !P.size) mode(1 + (Math.random() * 8 | 0), 1 + (Math.random() * 8 | 0));
@@ -1463,6 +1513,7 @@ function Relativity() {
     dur: 60, hiddenTitle: 'time is passing differently here',
     enter() { layout(); S.drone([mtof(35), mtof(42), mtof(47), mtof(54)], .25, 500); },
     resize() { layout(); },
+    shake(k) { for (const c of C) c.tau += rand(0, 1.2) * k; S.noise({ dur: .3, f: 3200, q: 3, g: .05 }); },
     dbl() {
       let mx = 0; for (const c of C) mx = Math.max(mx, c.tau);
       const t = Math.ceil(mx / TAU) * TAU; for (const c of C) c.tau = t - 1e-6;
@@ -1544,6 +1595,7 @@ function ignite() {
   ign = 0;
   S.init();
   try { if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().catch(() => {}); } catch (e) {}
+  try { if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') DeviceMotionEvent.requestPermission().catch(() => {}); } catch (e) {}
   S.note(mtof(62), { g: .12, d: 3.5 }); S.note(mtof(69), { g: .08, d: 3.5, at: .18 }); S.note(mtof(74), { g: .05, d: 4, at: .36 });
   buzz(18);
 }

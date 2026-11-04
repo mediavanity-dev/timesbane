@@ -19,6 +19,15 @@ There are twelve movements. They drift into one another on their own, or you can
 | Epicycles | Fourier series | Your drawing (or an old one of yours) is rebuilt from circles turning on circles, 1, 2, 3, 5, 8… at a time, and its circles become a chord |
 | Relativity | Gravitational time dilation | A grid of clocks slows and bends near your finger. They stay out of sync afterwards. Double-tap to resynchronise |
 
+## Sensors
+
+- **Tilt** (orientation): slides the debris in Unbreaking, turns the Cave's 4D object, bends Droste's tunnel, blows the wind in Absence and nudges the Sunflower's angle.
+- **Shake** (accelerometer): scatters Shy's swarm, shatters every vessel, flings the 4D object, bursts the Droste tunnel, shakes the blossoms off the tree, knocks the three suns out of orbit, splits the Butterfly cloud, throws the Chladni sand and scrambles the clocks.
+- **Stillness**: Shy's eye only forms while the phone is held still.
+- **Vibration** (Android only) and **leaving the tab** (Absence keeps growing; the title changes).
+
+iPhone asks for motion permission on the first tap.
+
 It remembers you (in `localStorage` only, nothing leaves the device). Your past gestures come back as a ghost, every visit adds a star to the night sky, and every visit has a new invented alphabet, a new flow field, new vessel shapes and a new tunnel. The tab title changes when you look away.
 
 ## Tech
