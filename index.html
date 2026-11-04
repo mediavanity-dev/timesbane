@@ -104,6 +104,8 @@ const MEM = (() => {
   m.total = +m.total || 0;
   m.first = m.first || Date.now();
   m.seen = Array.isArray(m.seen) ? m.seen : [];
+  m.found = m.found && typeof m.found === 'object' && !Array.isArray(m.found) ? m.found : {};
+  m.wishes = m.wishes | 0;
   return m;
 })();
 
@@ -183,6 +185,13 @@ try {
 } catch (e) {}
 const pastStrokes = MEM.strokes.slice();
 function saveMem() { try { localStorage.setItem('caa', JSON.stringify(MEM)); } catch (e) {} }
+// The only record of a discovery is a gold star in the night sky of Absence.
+function found(id) { const first = !MEM.found[id]; if (first) { MEM.found[id] = Date.now(); saveMem(); } return first; }
+const SESSION = {};
+// mirror minutes: 1:11, 2:22, 3:33, 4:44, 5:55, 10:10, 11:11, 12:12
+const TWIN = (() => { const d = new Date(), h = d.getHours() % 12 || 12, m = d.getMinutes(), t = `${h}${String(m).padStart(2, '0')}`; return new Set(t).size === 1 || (h >= 10 && h === m); })();
+let BAT = null;
+try { if (navigator.getBattery) navigator.getBattery().then(b => { BAT = b; }).catch(() => {}); } catch (e) {}
 saveMem();
 setInterval(() => { if (!document.hidden) { MEM.total += 5; saveMem(); } }, 5000);
 addEventListener('pagehide', saveMem);
@@ -401,6 +410,8 @@ const restless = () => MOTION.has && MOTION.e > 1.1;
 function Shy() {
   const ghost = new Ghost();
   let ps = [], o = 0, ts = 1, lt = 0, lastTouch = -99, opened = false, hb = 0, lx = 0, ly = 0;
+  let sleeping = false, lull = 0, wk = 0, wkT = -1;
+  const HR = new Date().getHours(), NIGHT = HR >= 22 || HR < 5;
   const E = { cx: 0, cy: 0, w: 0, h: 0, R: 0, gx: 0, gy: 0, bl: 1, nb: 0, bt: -1 };
   const F = [.0034 * rand(.6, 1.5), .0041 * rand(.6, 1.5), .0021 * rand(.6, 1.6)], EH = rand(.4, .53);
   function layout() {
@@ -437,7 +448,17 @@ function Shy() {
       for (const q of ps) { const a = rand(0, TAU), v = rand(2, 9) * k; q.vx += Math.cos(a) * v; q.vy += Math.sin(a) * v; }
       S.noise({ dur: .5, f: 900, ft: 'lowpass', g: .12 }); S.note(mtof(26 + 12), { g: .12, d: 1.5, glide: 1.4 });
     },
-    down() { S.cut(160, .25); S.lvl(.22, .4); },
+    down() {
+      S.cut(160, .25); S.lvl(.22, .4);
+      if (sleeping) {
+        sleeping = false; ts = 3; E.bl = 1;
+        for (const q of ps) { const a = rand(0, TAU), v = rand(1, 4); q.vx += Math.cos(a) * v; q.vy += Math.sin(a) * v; }
+        S.note(mtof(74), { g: .06, d: .8, glide: .7 });
+      } else if (E.bt >= 0 && o > .7 && wkT < 0) {
+        wkT = 0; found('wink');
+        S.note(mtof(81), { g: .04, d: .6 }); S.note(mtof(86), { g: .03, d: .6, at: .12 });
+      }
+    },
     up(p) {
       if (P.size) return;
       ts = 2.6; lx = p.x; ly = p.y;
@@ -451,7 +472,7 @@ function Shy() {
     frame(dt) {
       const touching = P.size > 0;
       if (touching) lastTouch = T;
-      ts = lerp(ts, touching ? .012 : 1, 1 - Math.exp(-dt * (touching ? 7 : 1.1)));
+      ts = lerp(ts, touching ? .012 : sleeping ? .3 : 1, 1 - Math.exp(-dt * (touching ? 7 : 1.1)));
       lt += dt * ts;
       if (touching) o = Math.max(0, o - dt * 1.6);
       else if (restless()) { o = Math.max(0, o - dt * .5); lastTouch = Math.max(lastTouch, T - 2); }
@@ -464,7 +485,14 @@ function Shy() {
         S.note(mtof(81), { g: .025, a: 1.8, d: 5, pan: .3 });
       }
       if (oe < .2) opened = false;
-      if (oe > .6 && E.bt < 0 && T > E.nb) { E.bt = 0; S.note(mtof(45), { g: .05, d: .35 }); }
+      if (!sleeping && oe > .95 && !touching && !restless() && T - lastTouch > (NIGHT ? 25 : 50)) { sleeping = true; found('sleep'); S.lvl(.25, 3); }
+      if (sleeping && (restless() || oe < .5)) { sleeping = false; E.bl = 1; }
+      if (sleeping) {
+        E.bl = lerp(E.bl, .04, 1 - Math.exp(-dt * .7)); E.bt = -1; E.nb = T + 3;
+        lull -= dt; if (lull <= 0) { lull = 3.2; S.note(scaleNote(50, [0, 2, 4, 2][Math.random() * 4 | 0]), { g: .03, a: .4, d: 3 }); }
+      }
+      if (wkT >= 0) { wkT += dt; wk = Math.sin(Math.PI * Math.min(1, wkT / .7)); if (wkT > .7) { wkT = -1; wk = 0; } }
+      if (oe > .6 && E.bt < 0 && T > E.nb && !sleeping) { E.bt = 0; S.note(mtof(45), { g: .05, d: .35 }); }
       if (E.bt >= 0) {
         E.bt += dt; const k = E.bt / .3;
         E.bl = 1 - Math.sin(Math.PI * Math.min(1, k)) * .95;
@@ -506,10 +534,10 @@ function Shy() {
         let vx = Math.cos(a) * 1.15, vy = Math.sin(a) * 1.15;
         if (oe > .001) {
           let qx, qy;
-          if (p.k === 0) { qx = E.cx + p.u * w; qy = E.cy + p.v * (h * (1 - p.u * p.u) + p.off) * bl; }
+          if (p.k === 0) { qx = E.cx + p.u * w; qy = E.cy + p.v * (h * (1 - p.u * p.u) + p.off) * (p.u < 0 ? bl * (1 - wk * .95) : bl); }
           else {
             qx = E.gx + Math.cos(p.u) * p.v * R; qy = E.gy + Math.sin(p.u) * p.v * R;
-            const ux = (qx - E.cx) / w, lh = Math.abs(ux) < 1 ? h * (1 - ux * ux) * bl : 0;
+            const ux = (qx - E.cx) / w, lh = Math.abs(ux) < 1 ? h * (1 - ux * ux) * (ux < 0 ? bl * (1 - wk * .95) : bl) : 0;
             qy = clamp(qy, E.cy - lh, E.cy + lh);
           }
           vx = lerp(vx, (qx - p.x) * .07, oe); vy = lerp(vy, (qy - p.y) * .07, oe);
@@ -563,7 +591,7 @@ function randProfile() {
 }
 function Unbreaking() {
   const INK = ['#1a1620', '#2d2632'];
-  let objs = [], Hh = 0, rings = [], lastAct = 0, rr = 0, lastTick = 0;
+  let objs = [], Hh = 0, rings = [], lastAct = 0, rr = 0, lastTick = 0, trin = false;
   const TT = 1.9;
   function build(pi) {
     const prof = typeof pi === 'function' ? pi : PROFILES[pi], R = 17, C = 6, V = [];
@@ -627,6 +655,11 @@ function Unbreaking() {
   }
   function tap(x, y) {
     lastAct = T;
+    for (const o of objs) if (o.state === 'shatter' && o.t < .3 && Math.abs(x - o.ax) < Hh * .7 && Math.abs(y - o.ay) < Hh * .7) {
+      o.state = 'frozen'; o.t = 0; found('timestop');
+      S.cut(150, .1); S.note(mtof(91), { g: .025, a: .3, d: 4 }); S.note(mtof(98), { g: .015, a: .5, d: 4 });
+      return;
+    }
     for (const o of objs) if (o.state === 'whole' && Math.abs(x - o.ax) < Hh * .45 && Math.abs(y - o.ay) < Hh * .5) { shatter(o); return; }
     for (let k = 0; k < objs.length; k++) { const o = objs[(rr + k) % objs.length]; if (o.state === 'debris') { rr = (rr + k + 1) % objs.length; gather(o, x, y); return; } }
   }
@@ -684,6 +717,9 @@ function Unbreaking() {
           if (o.t >= TT) { o.state = 'whole'; o.t = 0; rings.push({ x: o.ax, y: o.ay, t: 0 }); buzz(25); for (const s of o.sh) { s.x = s.ex; s.y = s.ey; s.r = 0; } }
         } else if (o.state === 'whole') {
           if (o.t > 5.5) shatter(o);
+        } else if (o.state === 'frozen') {
+          for (const s of o.sh) { s.r += .003 * d60; s.x += Math.sin(T * .7 + s.hx) * .04 * d60; s.y += Math.cos(T * .6 + s.hy) * .04 * d60; }
+          if (o.t > 4) { S.cut(1200, .8); gather(o, o.ax, o.ay); }
         } else if (o.state === 'shatter') {
           for (const s of o.sh) {
             const k = clamp(o.t / s.du, 0, 1), e = 1 - Math.pow(1 - k, 4);
@@ -692,6 +728,10 @@ function Unbreaking() {
           if (o.t > 1.25) { o.state = 'debris'; for (const s of o.sh) { s.vx = s.vy = s.vr = 0; } }
         }
       }
+      if (!trin && objs.length === 3 && objs.every(o => o.state === 'whole')) {
+        trin = true; found('trinity');
+        objs.forEach((o, i) => { o.t = 0; o.gold = true; S.bell(o.note * 2, i * .15, .8); });
+      }
       g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
       g.drawImage(paper(), 0, 0, W, H);
       g.fillStyle = 'rgba(70,50,30,.13)'; g.beginPath();
@@ -699,8 +739,17 @@ function Unbreaking() {
       g.fill();
       for (let tone = 0; tone < 2; tone++) {
         g.fillStyle = INK[tone]; g.beginPath();
-        for (const o of objs) for (const s of o.sh) if (s.tone === tone) addTri(g, s, 0, 0);
+        for (const o of objs) if (!o.gold) for (const s of o.sh) if (s.tone === tone) addTri(g, s, 0, 0);
         g.fill();
+      }
+      if (trin) {
+        g.fillStyle = '#b8862f'; g.beginPath();
+        for (const o of objs) if (o.gold) for (const s of o.sh) addTri(g, s, 0, 0);
+        g.fill();
+        if (objs.every(o => o.state === 'whole')) {
+          g.strokeStyle = 'rgba(214,172,78,.55)'; g.lineWidth = 1; g.beginPath();
+          objs.forEach((o, i) => i ? g.lineTo(o.ax, o.ay) : g.moveTo(o.ax, o.ay)); g.closePath(); g.stroke();
+        }
       }
       g.lineJoin = 'round';
       for (const o of objs) if (o.state === 'whole') {
@@ -748,6 +797,7 @@ function Cave() {
   objs.forEach(o => { const n = o.v.length; o.sx = new Float32Array(n); o.sy = new Float32Array(n); o.w = new Float32Array(n); o.x3 = new Float32Array(n); o.z3 = new Float32Array(n); o.sg = new Int8Array(n); o.k2 = new Float32Array(n); });
   const M = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
   let ci = 0, pi = -1, mix = 1, vX = 0, vY = 0, glow = 1, lastSwitch = 0, lastNote = 0, fc = 0;
+  let figX = -1, figY = 0, figH = 0, leaving = -1, figGone = !!SESSION.figGone;
   const STOPS = [[80, 110, 255], [240, 230, 215], [255, 90, 50]];
   const NB = 7, COLS = [];
   for (let b = 0; b < NB; b++) { const u = b / (NB - 1) * 2; const i = Math.min(1, Math.floor(u)), k = u - i; COLS.push(STOPS[i].map((c, j) => Math.round(lerp(c, STOPS[i + 1][j], k))).join(',')); }
@@ -789,21 +839,25 @@ function Cave() {
     }
     g.globalCompositeOperation = 'source-over';
   }
-  function figure(x, y, h) {
+  function figure(x, y, h, walk = 0, flip = false) {
+    g.save();
+    if (flip) { g.translate(x, 0); g.scale(-1, 1); g.translate(-x, 0); }
     g.lineCap = 'round'; g.lineJoin = 'round';
+    const lw = Math.cos(walk);
     const draw = (ox, col) => {
       g.strokeStyle = col; g.fillStyle = col; g.lineWidth = h * .09;
       g.beginPath(); g.arc(x + ox, y - h * .89, h * .1, 0, TAU); g.fill();
       g.beginPath();
       g.moveTo(x + ox, y - h * .76); g.lineTo(x + ox, y - h * .42);
-      g.moveTo(x + ox, y - h * .42); g.lineTo(x + ox - h * .09, y);
-      g.moveTo(x + ox, y - h * .42); g.lineTo(x + ox + h * .08, y);
+      g.moveTo(x + ox, y - h * .42); g.lineTo(x + ox - h * .09 * lw, y);
+      g.moveTo(x + ox, y - h * .42); g.lineTo(x + ox + h * .08 * lw, y);
       g.moveTo(x + ox, y - h * .7); g.lineTo(x + ox - h * .1, y - h * .43);
       g.moveTo(x + ox, y - h * .7); g.lineTo(x + ox + h * .07, y - h * .44);
       g.stroke();
     };
     draw(-1.5, 'rgba(255,190,150,.4)');
     draw(0, '#020103');
+    g.restore();
   }
   function next() { pi = ci; ci = (ci + 1) % objs.length; mix = 0; lastSwitch = T; S.bell(scaleNote(45, ci * 3), 0, .7); }
   return {
@@ -814,7 +868,11 @@ function Cave() {
       S.drone([mtof(33), mtof(40), mtof(45), mtof(52)], .45, 520);
     },
     move(p) { vX += p.dx * .0035; vY += p.dy * .0035; },
-    up(p) { if (p.moved < 10 && T - p.t0 < .35) { glow = 3; S.note(scaleNote(57, 0), { g: .05, d: 2.5 }); S.note(scaleNote(57, 4), { g: .04, d: 2.5, at: .07 }); } },
+    up(p) {
+      if (p.moved < 10 && !figGone && leaving < 0 && figH && Math.abs(p.x - figX) < figH * .7 && p.y > figY - figH * 1.3 && p.y < figY + 14) {
+        leaving = 0; found('figure'); S.note(mtof(64), { g: .04, d: 2 }); S.note(mtof(59), { g: .03, d: 2, at: .4 }); return;
+      }
+      if (p.moved < 10 && T - p.t0 < .35) { glow = 3; S.note(scaleNote(57, 0), { g: .05, d: 2.5 }); S.note(scaleNote(57, 4), { g: .04, d: 2.5, at: .07 }); } },
     dbl() { next(); },
     shake(k) { vX += rand(-.12, .12) * k; vY += rand(-.12, .12) * k; glow = 3; },
     frame(dt) {
@@ -847,7 +905,10 @@ function Cave() {
         g.lineTo(cx + cur.x3[b] * Sc * .9, floorY + fh * .45 + cur.z3[b] * fh * .22);
       }
       g.stroke();
-      figure(W * .78, floorY + fh * .5, Math.min(W, H) * .085);
+      figH = Math.min(W, H) * .085; figY = floorY + fh * .5;
+      if (figX < 0) figX = W * .78;
+      if (leaving >= 0) { leaving += dt; figX += dt * figH * .55; if (figX > W + figH) { figGone = SESSION.figGone = true; leaving = -1; } }
+      if (!figGone) figure(figX, figY, figH, leaving >= 0 ? leaving * 7 : 0, leaving >= 0);
       if (mix < 1 && pi >= 0) drawObj(objs[pi], 1 - mix);
       drawObj(cur, mix);
     }
@@ -869,9 +930,22 @@ function Asemic() {
     it: ['nessuno sta scrivendo questo', 'sei tu che leggi', 'significa ciò di cui hai bisogno', 'questo era qui prima di te', 'quasi capito', 'la pagina si ricorda di te', 'cosa stai cercando', 'il senso arriva da te'],
   };
   const SENT = (SENTS[CTX.lang] || SENTS.en).map(t => t.split(' '));
+  const MOONS = {
+    en: ['the moon is full tonight', 'there is no moon tonight'],
+    es: ['esta noche la luna está llena', 'esta noche no hay luna'],
+    fr: ['la lune est pleine ce soir', 'il n’y a pas de lune ce soir'],
+    de: ['heute Nacht ist der Mond voll', 'heute Nacht gibt es keinen Mond'],
+    pt: ['a lua está cheia esta noite', 'não há lua esta noite'],
+    it: ['stanotte la luna è piena', 'stanotte non c’è la luna'],
+  };
+  let MOONDAY = false;
+  {
+    const ph = sky().phase, mm = MOONS[CTX.lang] || MOONS.en, k = Math.abs(ph - .5) < .03 ? 0 : (ph < .03 || ph > .97) ? 1 : -1;
+    if (k >= 0) { SENT.unshift(mm[k].split(' ')); MOONDAY = true; found(k ? 'newmoon' : 'fullmoon'); }
+  }
   let ink, ix, tmp, tx, sm, smx, gh, lineH, mg, glyphs;
   let pen = { q: [], cur: null, ci: 0, wait: .8, nx: -99, ny: -99 }, L = { x: 0, y: 0 };
-  let words = 0, nextReal = 3, si = Math.random() * SENT.length | 0, wi = 0, fades = [], scroll = 0, real = null;
+  let words = 0, nextReal = 3, si = MOONDAY ? 0 : Math.random() * SENT.length | 0, wi = 0, fades = [], scroll = 0, real = null;
   function setup(keep) {
     const old = ink;
     ink = mk(W * DPR, H * DPR); ix = ink.getContext('2d');
@@ -1035,7 +1109,7 @@ function Asemic() {
 // ======================================================================
 function Droste() {
   const ZB = rand(.968, .984), RS = (Math.random() < .5 ? 1 : -1) * rand(.5, 1.6);
-  let fb, fx, tb, tbx, z = ZB, hue = new Date().getHours() * 15 + rand(0, 40), holdT = 0, ha = { x: 0, y: 0 }, voice = null, wasRev = false;
+  let fb, fx, tb, tbx, z = ZB, hue = new Date().getHours() * 15 + rand(0, 40), holdT = 0, ha = { x: 0, y: 0 }, voice = null, wasRev = false, fell = false;
   const prev = new Map(), ghost = new Ghost();
   function setup() {
     fb = mk(W, H); fx = fb.getContext('2d'); tb = mk(fb.width, fb.height); tbx = tb.getContext('2d');
@@ -1072,6 +1146,10 @@ function Droste() {
       z = lerp(z, rev ? 1.03 : ZB, 1 - Math.exp(-dt * 3));
       const zz = Math.pow(z, dt * 60), rr = (.0028 * RS + TILT.x * .014) * dt * 60;
       const cx = W / 2 + TILT.x * W * .12, cy = H / 2 + TILT.y * H * .12;
+      const f1 = P.size === 1 ? P.values().next().value : null;
+      if (f1 && rev && !fell && T - holdT > 3.2 && Math.hypot(f1.x - cx, f1.y - cy) < 30 && phase === 'idle') {
+        fell = true; found('bottom'); S.bell(mtof(38), 0, 1); buzz([20, 40, 60]); go(0);
+      }
       tbx.globalCompositeOperation = 'copy'; tbx.drawImage(fb, 0, 0);
       fx.globalCompositeOperation = 'source-over'; fx.globalAlpha = 1;
       fx.fillStyle = '#060509'; fx.fillRect(0, 0, W, H);
@@ -1135,7 +1213,7 @@ function buildTree(seed, COLS = SEASON_COLS[1]) {
 }
 function Absence() {
   let seed = CTX.placeSeed != null ? CTX.placeSeed : (MEM.visits * 7919 + (Date.now() % 1000)) | 0, bs, Gmax = 1, G = 0, alive = 1, petals = [];
-  let SK = null, skT = -99, az0 = CTX.south ? 0 : Math.PI;
+  let SK = null, skT = -99, az0 = CTX.south ? 0 : Math.PI, meteors = [], moonP = null;
   const SEAS = season();
   function drawMoon(x, y, r, ph) {
     g.fillStyle = 'rgba(244,236,220,.08)'; g.beginPath(); g.arc(x, y, r * 3, 0, TAU); g.fill();
@@ -1193,7 +1271,32 @@ function Absence() {
       g.fillStyle = `rgba(255,236,210,${a * .18})`; g.beginPath(); g.arc(s[0] * W, s[1] * H, 5, 0, TAU); g.fill();
       g.fillStyle = `rgba(255,244,228,${a})`; g.beginPath(); g.arc(s[0] * W, s[1] * H, 1.5, 0, TAU); g.fill();
     });
-    if (SK.moon[0] > 0) { const p = proj(SK.moon[0], SK.moon[1]); if (p) drawMoon(p[0], p[1], Math.min(W, H) * .025, SK.phase); }
+    moonP = null;
+    if (SK.moon[0] > 0) { const p = proj(SK.moon[0], SK.moon[1]); if (p) { moonP = p; drawMoon(p[0], p[1], Math.min(W, H) * .025, SK.phase); } }
+    // the ledger: one gold star for each thing ever found, one pale star for each wish
+    Object.keys(MEM.found).forEach((id, i) => {
+      let hs = 7; for (const ch of id) hs = (hs * 31 + ch.charCodeAt(0)) | 0;
+      const r = rng(hs), x = (.05 + r() * .9) * W, y = (.04 + r() * .5) * H, a = (.6 + .4 * Math.sin(T * 1.3 + i)) * Math.max(.35, night);
+      g.fillStyle = `rgba(255,207,107,${a * .22})`; g.beginPath(); g.arc(x, y, 6, 0, TAU); g.fill();
+      g.fillStyle = `rgba(255,214,130,${a})`; g.beginPath(); g.arc(x, y, 1.8, 0, TAU); g.fill();
+    });
+    const rw = rng(4242);
+    for (let i = 0; i < Math.min(MEM.wishes, 60); i++) {
+      const x = (.05 + rw() * .9) * W, y = (.04 + rw() * .5) * H, a = (.6 + .4 * Math.sin(T * 1.7 + i)) * Math.max(.35, night);
+      g.fillStyle = `rgba(200,220,255,${a})`; g.beginPath(); g.arc(x, y, 1.5, 0, TAU); g.fill();
+    }
+    // falling stars, only in real darkness
+    if (night > .6 && Math.random() < dt * .045 && meteors.length < 2) {
+      const dir = Math.random() < .5 ? 1 : -1;
+      meteors.push({ x: rand(.1, .9) * W, y: rand(.05, .35) * H, vx: dir * rand(300, 500), vy: rand(120, 220), t: 0 });
+    }
+    for (let i = meteors.length - 1; i >= 0; i--) {
+      const m = meteors[i]; m.t += dt; m.x += m.vx * dt; m.y += m.vy * dt;
+      if (m.t > 1.1) { meteors.splice(i, 1); continue; }
+      const a = Math.sin(Math.PI * m.t / 1.1), lg = g.createLinearGradient(m.x - m.vx * .12, m.y - m.vy * .12, m.x, m.y);
+      lg.addColorStop(0, 'rgba(255,246,232,0)'); lg.addColorStop(1, `rgba(255,246,232,${.9 * a})`);
+      g.strokeStyle = lg; g.lineWidth = 1.4; g.beginPath(); g.moveTo(m.x - m.vx * .12, m.y - m.vy * .12); g.lineTo(m.x, m.y); g.stroke();
+    }
   }
   let veil = 0, full = false, vx = 0, vy = 0, holdG = 0, voice = null, lastStep = -1, stars = [], vstars = [];
   function newTree(g0) {
@@ -1206,6 +1309,10 @@ function Absence() {
     dur: 90, hiddenTitle: 'it is growing',
     enter() {
       newTree(Math.min(2.8 + MEM.visits * .15, 5.5));
+      const fd = new Date(MEM.first), nd = new Date();
+      if (fd.getMonth() === nd.getMonth() && fd.getDate() === nd.getDate() && nd - fd > 300 * 864e5) {
+        G = Gmax + 1; bs.COLS = ['#ffcf6b', '#ffe3a3', '#fff3d6', '#f0b44a']; found('anniversary');
+      }
       const r = rng(99); stars = []; for (let i = 0; i < 170; i++) stars.push([r(), r() * .8, .1 + r() * .3, r() * TAU]);
       const r2 = rng(1234); vstars = []; for (let i = 0; i < Math.min(MEM.visits, 80); i++) vstars.push([.04 + r2() * .92, .04 + r2() * .5]);
       S.drone([mtof(39), mtof(46), mtof(51), mtof(58)], .35, 600);
@@ -1223,6 +1330,17 @@ function Absence() {
       if (n) [0, 4, 7].forEach((q, i) => S.note(scaleNote(63, q + 5), { g: .03, d: 2.5, at: i * .09 }));
     },
     down(p) { holdG = G; vx = p.x; vy = p.y; },
+    up(p) {
+      if (p.moved > 12 || T - p.t0 > .4) return;
+      for (let i = 0; i < meteors.length; i++) {
+        const m = meteors[i];
+        if (Math.hypot(p.x - m.x, p.y - m.y) < 60) { meteors.splice(i, 1); MEM.wishes++; found('wish'); saveMem(); chord(); buzz(30); return; }
+      }
+      if (moonP && SK && Math.hypot(p.x - moonP[0], p.y - moonP[1]) < 30) {
+        bs.COLS = ['#e8eef8', '#c9d6ea', '#ffffff', '#aab8d0']; found('moon');
+        S.bell(scaleNote(63, Math.round(SK.phase * 10)), 0, .7);
+      }
+    },
     frame(dt) {
       const holding = P.size > 0, f0 = P.values().next().value;
       if (f0) { vx = f0.x; vy = f0.y; }
@@ -1304,7 +1422,7 @@ function Absence() {
 // ======================================================================
 function Sunflower() {
   const GA = Math.PI * (3 - Math.sqrt(5));
-  let n = 0, off = 0, N = 0, c = 0, rot = 0, wasOff = false, lastQ = 0, lastQT = 0;
+  let n = 0, off = 0, N = 0, c = 0, rot = 0, wasOff = false, lastQ = 0, lastQT = 0, holdQ = 0, holdQT = 0, goldT = -9;
   function spokes(x) { for (let q = 1; q <= 89; q++) { const f = x * q; if (Math.abs(f - Math.round(f)) < .004) return q; } return 0; }
   return {
     dur: 58, hiddenTitle: '137.507764°',
@@ -1325,6 +1443,8 @@ function Sunflower() {
       const q = Math.abs(off) > .0015 ? spokes((GA + off) / TAU) : 0;
       if (q && q !== lastQ && T - lastQT > .12) { lastQT = T; S.note(scaleNote(53, q % 15), { g: .05, d: 2, pan: clamp(off * 25, -1, 1) }); }
       lastQ = q;
+      if (f0 && [5, 8, 13, 21, 34, 55].includes(q)) { if (q === holdQ) holdQT += dt; else { holdQ = q; holdQT = 0; } } else { holdQ = 0; holdQT = 0; }
+      if (holdQT > 1.6 && T - goldT > 4) { goldT = T; found('fibonacci'); [0, 1, 2, 3, 5, 8].forEach((k, i) => S.note(scaleNote(53, k), { g: .04, d: 3, at: i * .09 })); }
       g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
       g.fillStyle = 'rgba(5,4,7,.45)'; g.fillRect(0, 0, W, H);
       const cx = W / 2, cy = H / 2, k0 = Math.max(0, Math.floor(n - N)), k1 = Math.floor(n);
@@ -1337,7 +1457,8 @@ function Sunflower() {
         const path = k % 21 === 0 ? pB : k % 34 === 0 ? pC : pA;
         path.moveTo(x + s, y); path.arc(x, y, s, 0, TAU);
       }
-      g.fillStyle = 'rgba(236,228,214,.82)'; g.fill(pA);
+      const gk = clamp(1 - (T - goldT) / 3, 0, 1);
+      g.fillStyle = `rgba(${lerp(236, 255, gk) | 0},${lerp(228, 207, gk) | 0},${lerp(214, 107, gk) | 0},.82)`; g.fill(pA);
       g.fillStyle = '#ff6a4d'; g.fill(pB);
       g.fillStyle = '#6a86ff'; g.fill(pC);
     }
@@ -1351,12 +1472,12 @@ function Sunflower() {
 function Bodies() {
   const COL = ['255,106,77', '236,228,214', '96,126,255', '255,196,120', '176,146,255', '120,220,200'];
   const EPS2 = .0025;
-  let B = [], sc = 1, port = true, cx = 0, cy = 0, born = 0, perturbed = false, lastN = 0;
+  let B = [], sc = 1, port = true, cx = 0, cy = 0, born = 0, perturbed = false, lastN = 0, binT = 0, married = false;
   function eight() {
     const x = .97000436, y = -.24308753, vx = -.93240737, vy = -.86473146;
     B = [{ x, y, vx: -vx / 2, vy: -vy / 2, m: 1, c: 0 }, { x: -x, y: -y, vx: -vx / 2, vy: -vy / 2, m: 1, c: 1 }, { x: 0, y: 0, vx, vy, m: 1, c: 2 }];
     B.forEach(b => { b.sg = Math.sign(b.vx); b.px = null; });
-    born = T; perturbed = false;
+    born = T; perturbed = false; married = false; binT = 0;
   }
   function layout() { cx = W / 2; cy = H / 2; port = H > W; sc = port ? Math.min(H * .4 / 1.1, W * .4 / .45) : Math.min(W * .4 / 1.1, H * .4 / .45); B.forEach(b => b.px = null); }
   const toS = b => port ? [cx - b.y * sc, cy + b.x * sc] : [cx + b.x * sc, cy + b.y * sc];
@@ -1401,6 +1522,8 @@ function Bodies() {
       }
       let mx = 0, my = 0, M = 0; for (const b of B) { mx += b.x * b.m; my += b.y * b.m; M += b.m; } mx /= M; my /= M;
       for (let i = B.length - 1; i >= 0; i--) if (Math.hypot(B[i].x - mx, B[i].y - my) > 5) { S.note(mtof(38), { g: .1, d: 2.5, glide: 1.5 }); B.splice(i, 1); }
+      if (B.length === 2 && Math.hypot(B[0].x - B[1].x, B[0].y - B[1].y) < 1.6) binT += dt; else binT = 0;
+      if (binT > 12 && !married) { married = true; found('binary'); born = T; [0, 4, 7, 12].forEach((k, i) => S.note(scaleNote(50, k), { g: .045, d: 4, at: i * .15 })); }
       if (B.length < 2 || (perturbed && T - born > 50)) { g.fillStyle = '#050407'; g.fillRect(0, 0, W, H); eight(); }
       for (const b of B) {
         const sg = Math.sign(b.vx) || 1;
@@ -1414,7 +1537,7 @@ function Bodies() {
       g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
       for (const b of B) {
         const [sx, sy] = toS(b);
-        if (b.px !== null) { g.strokeStyle = `rgba(${COL[b.c]},.75)`; g.lineWidth = 1.5; g.beginPath(); g.moveTo(b.px, b.py); g.lineTo(sx, sy); g.stroke(); }
+        if (b.px !== null) { g.strokeStyle = `rgba(${married ? '255,207,107' : COL[b.c]},.75)`; g.lineWidth = 1.5; g.beginPath(); g.moveTo(b.px, b.py); g.lineTo(sx, sy); g.stroke(); }
         b.px = sx; b.py = sy;
         g.fillStyle = `rgba(${COL[b.c]},.35)`; g.beginPath(); g.arc(sx, sy, 2 + b.m * 3, 0, TAU); g.fill();
       }
@@ -1429,7 +1552,7 @@ function Bodies() {
 // ======================================================================
 function Butterfly() {
   const NP = 420, SIG = 10, RHO = 28, BETA = 8 / 3;
-  let ps = [], phi = rand(0, TAU), vphi = 0, lastN = 0, born = 0, sc = 1;
+  let ps = [], phi = rand(0, TAU), vphi = 0, lastN = 0, born = 0, sc = 1, one = false;
   const d = (x, y, z) => [SIG * (y - x), x * (RHO - z) - y, x * y - BETA * z];
   function adv(p, h) {
     const a = d(p[0], p[1], p[2]), b = d(p[0] + a[0] * h / 2, p[1] + a[1] * h / 2, p[2] + a[2] * h / 2);
@@ -1452,6 +1575,10 @@ function Butterfly() {
     shake(k) { for (const p of ps) { p[0] += rand(-1, 1) * .02 * k; p[1] += rand(-1, 1) * .02 * k; } vphi += rand(-.05, .05); S.noise({ dur: .4, f: 2400, g: .06 }); },
     up(p) {
       if (p.moved > 10) return;
+      if (Math.hypot(p.x - ps[0][4], p.y - ps[0][5]) < 24) {
+        const q = ps[0]; seed(q[0], q[1], q[2]); one = true; found('unison');
+        S.note(scaleNote(57, 0), { g: .05, d: 3 }); S.note(scaleNote(57, 5), { g: .05, d: 3 }); return;
+      }
       let best = 0, bd = Infinity;
       ps.forEach((q, i) => { const e = Math.hypot(q[4] - p.x, q[5] - p.y); if (e < bd) { bd = e; best = i; } });
       const q = ps[best]; seed(q[0], q[1], q[2]); S.bell(scaleNote(52, 2), 0, .6); buzz(15);
@@ -1480,7 +1607,7 @@ function Butterfly() {
         }
       }
       g.fillStyle = '#ff6a4d'; g.fillRect(ps[0][4] - 1.5, ps[0][5] - 1.5, 3, 3);
-      g.fillStyle = '#6a86ff'; g.fillRect(ps[1][4] - 1.5, ps[1][5] - 1.5, 3, 3);
+      g.fillStyle = one ? '#ff6a4d' : '#6a86ff'; g.fillRect(ps[1][4] - 1.5, ps[1][5] - 1.5, 3, 3);
       g.globalCompositeOperation = 'source-over';
     }
   };
@@ -1491,7 +1618,7 @@ function Butterfly() {
 //    and gathers where the plate is still.
 // ======================================================================
 function Chladni() {
-  let G = null, NG = 0, n = 2, m = 5, sg = 1, side = 0, ox = 0, oy = 0, amp = 1, lastMode = -99, cell = -1;
+  let G = null, NG = 0, n = 2, m = 5, sg = 1, side = 0, ox = 0, oy = 0, amp = 1, lastMode = -99, cell = -1, burstT = -99;
   function layout() { side = Math.min(W, H) * .9; ox = (W - side) / 2; oy = (H - side) / 2; }
   function mode(nn, mm) {
     if (nn === mm) mm = nn + 1;
@@ -1525,7 +1652,15 @@ function Chladni() {
     frame(dt) {
       amp = lerp(amp, 1, 1 - Math.exp(-dt * .6));
       if (T - lastMode > 8 && !P.size) mode(1 + (Math.random() * 8 | 0), 1 + (Math.random() * 8 | 0));
-      const k = side * .018 * amp * Math.min(2, dt * 60), PI = Math.PI, x1 = ox + side, y1 = oy + side;
+      const res = P.size && T - lastMode > 4 ? clamp((T - lastMode - 4) / 4, 0, 1) : 0;
+      if (res >= 1 && T - burstT > 6) {
+        burstT = T; lastMode = T; found('resonance');
+        for (let i = 0; i < NG; i++) { G[2 * i] = ox + Math.random() * side; G[2 * i + 1] = oy + Math.random() * side; }
+        S.noise({ dur: 1.2, f: 6000, ft: 'highpass', g: .1 }); S.note(mtof(36), { g: .2, d: 3, glide: 2 });
+        for (let i = 0; i < 10; i++) S.note(rand(2000, 6000), { g: .015, d: .6, at: rand(0, .8) });
+        buzz([40, 30, 80]);
+      }
+      const k = side * .018 * amp * (1 + res * 1.5) * Math.min(2, dt * 60), PI = Math.PI, x1 = ox + side, y1 = oy + side;
       for (let i = 0; i < NG; i++) {
         let x = G[2 * i], y = G[2 * i + 1];
         const u = (x - ox) / side, v = (y - oy) / side;
@@ -1537,7 +1672,8 @@ function Chladni() {
       g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
       g.fillStyle = '#0f0d15'; g.fillRect(ox, oy, side, side);
       g.strokeStyle = 'rgba(236,228,214,.1)'; g.lineWidth = 1; g.strokeRect(ox - .5, oy - .5, side + 1, side + 1);
-      g.fillStyle = 'rgba(236,228,214,.85)';
+      if (T - burstT < 1.5) { g.strokeStyle = `rgba(255,120,80,${.6 * (1 - (T - burstT) / 1.5)})`; g.lineWidth = 3; g.strokeRect(ox, oy, side, side); }
+      g.fillStyle = res > 0 ? `rgb(${lerp(236, 255, res) | 0},${lerp(228, 120, res) | 0},${lerp(214, 80, res) | 0})` : 'rgba(236,228,214,.85)';
       for (let i = 0; i < NG; i++) g.fillRect(G[2 * i] - .7, G[2 * i + 1] - .7, 1.4, 1.4);
     }
   };
@@ -1549,7 +1685,7 @@ function Chladni() {
 // ======================================================================
 function Epicycles() {
   const N = 128, FIB = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 128];
-  let coef = [], fi = 0, tt = 0, trail = [], drawing = null, hum = null, shape = [], held = 0;
+  let coef = [], fi = 0, tt = 0, trail = [], drawing = null, hum = null, shape = [], held = 0, perfect = false;
   function resample(pts) {
     const L = [0];
     for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
@@ -1567,7 +1703,7 @@ function Epicycles() {
     for (let i = 0; i < N; i++) { const th = i / N * TAU; let r = 1; for (let k = 2; k <= 7; k++) r += a[k] * Math.cos(k * th + ph[k]); pts.push([Math.cos(th) * r, Math.sin(th) * r]); }
     return pts;
   }
-  function setPath(pts) {
+  function setPath(pts, user) {
     if (pts.length < 2) return;
     const r = resample(pts); let mx = 0, my = 0;
     r.forEach(p => { mx += p[0]; my += p[1]; }); mx /= N; my /= N;
@@ -1585,9 +1721,12 @@ function Epicycles() {
     coef.sort((a, b) => b.amp - a.amp);
     shape = r.map(p => [(p[0] - mx) * f, (p[1] - my) * f]);
     fi = 0; tt = 0; trail = []; held = 0;
+    let tot = 0; for (const c of coef) tot += c.amp * c.amp;
+    perfect = !!user && coef[0].amp * coef[0].amp / (tot || 1) > .965;
+    if (perfect) found('circle');
     if (hum) hum.stop();
     const top = coef.filter(c => c.k !== 0 && Math.abs(c.k) <= 24).slice(0, 8), mxA = top.length ? top[0].amp : 1;
-    hum = S.partials(top.map(c => ({ f: 55 * Math.abs(c.k), g: .05 * c.amp / mxA, pan: Math.sign(c.k) * .5 })));
+    hum = S.partials(perfect ? [{ f: 220 * Math.abs(coef[0].k || 1), g: .06 }] : top.map(c => ({ f: 55 * Math.abs(c.k), g: .05 * c.amp / mxA, pan: Math.sign(c.k) * .5 })));
   }
   function pickShape() {
     if (pastStrokes.length && Math.random() < .6) setPath(pastStrokes[Math.random() * pastStrokes.length | 0].map(p => [p[0] * W, p[1] * H]));
@@ -1600,14 +1739,14 @@ function Epicycles() {
     down(p) { drawing = [[p.x, p.y]]; },
     move(p) { if (drawing && drawing.length < 600) drawing.push([p.x, p.y]); },
     up() {
-      if (drawing && drawing.length > 8) { setPath(drawing); S.bell(scaleNote(57, 0), 0, .5); }
+      if (drawing && drawing.length > 8) { setPath(drawing, true); S.bell(scaleNote(57, 0), 0, .5); }
       drawing = null;
     },
     frame(dt) {
       tt += dt * TAU / 8;
       if (tt >= TAU) {
         tt -= TAU;
-        if (fi < FIB.length - 1) { fi++; S.note(scaleNote(57, fi), { g: .04, d: 2 }); }
+        if (!perfect && fi < FIB.length - 1) { fi++; S.note(scaleNote(57, fi), { g: .04, d: 2 }); }
         else if (++held > 2 && !drawing) pickShape();
       }
       const cx = W / 2, cy = H / 2, K = Math.min(FIB[fi], coef.length);
@@ -1624,7 +1763,7 @@ function Epicycles() {
         if (c.amp > .6) { circ.moveTo(x + c.amp, y); circ.arc(x, y, c.amp, 0, TAU); }
         arms.moveTo(x, y); arms.lineTo(nx, ny); x = nx; y = ny;
       }
-      g.strokeStyle = 'rgba(236,228,214,.12)'; g.stroke(circ);
+      g.strokeStyle = perfect ? 'rgba(255,207,107,.75)' : 'rgba(236,228,214,.12)'; g.lineWidth = perfect ? 1.6 : 1; g.stroke(circ); g.lineWidth = 1;
       g.strokeStyle = 'rgba(236,228,214,.45)'; g.stroke(arms);
       trail.push([x, y]); if (trail.length > 520) trail.shift();
       g.lineCap = 'round'; g.lineJoin = 'round';
@@ -1646,7 +1785,8 @@ function Epicycles() {
 //      Your finger is heavy. The clocks never forget what they lost.
 // ======================================================================
 function Relativity() {
-  let C = [], sp = 0, R = 0, lastTick = 0;
+  let C = [], sp = 0, R = 0, lastTick = 0, hourDone = false;
+  const bh = { x: 0, y: 0, r: 0 };
   function layout() {
     sp = Math.min(W, H) / 6;
     const cols = Math.max(3, Math.floor(W / sp)), rows = Math.max(3, Math.floor(H / sp));
@@ -1668,9 +1808,24 @@ function Relativity() {
     frame(dt) {
       const masses = [...P.values()].map(p => ({ x: p.x, y: p.y, s: 1 }));
       masses.push({ x: W / 2 + Math.sin(T * .11) * W * .62, y: H / 2 + Math.sin(T * .07 + 1) * H * .55, s: .7 });
+      if (P.size >= 3) {
+        const fs = [...P.values()];
+        bh.x = fs.reduce((a, q) => a + q.x, 0) / fs.length; bh.y = fs.reduce((a, q) => a + q.y, 0) / fs.length;
+        if (bh.r < 2) { found('horizon'); S.note(mtof(26), { g: .25, d: 4, glide: 2 }); buzz(60); }
+        bh.r = lerp(bh.r, sp * 1.1, 1 - Math.exp(-dt * 1.5));
+      } else bh.r = lerp(bh.r, 0, 1 - Math.exp(-dt * 1.2));
+      if (bh.r > 2) masses.push({ x: bh.x, y: bh.y, s: 2.5 });
+      const now = new Date();
+      if (now.getMinutes() === 0 && now.getSeconds() < 3 && !hourDone) {
+        hourDone = true; found('hour');
+        const n = now.getHours() % 12 || 12; for (let i = 0; i < n; i++) S.bell(mtof(45), i * 1.1, .7);
+        let mx = 0; for (const c of C) mx = Math.max(mx, c.tau);
+        const t0 = Math.ceil(mx / TAU) * TAU; for (const c of C) c.tau = t0 - 1e-6;
+      }
       const rs = sp * 1.3;
       let ticks = 0;
       for (const c of C) {
+        if (c.gone) continue;
         let phi = 0, dx = 0, dy = 0;
         for (const m of masses) {
           const ex = m.x - c.bx, ey = m.y - c.by, d = Math.hypot(ex, ey) + 1;
@@ -1682,6 +1837,11 @@ function Relativity() {
         const prev = c.tau; c.tau += dt * c.rate * TAU / 4;
         if (Math.floor(c.tau / TAU) !== Math.floor(prev / TAU)) ticks++;
         c.x = c.bx + dx; c.y = c.by + dy;
+        if (bh.r > 2) {
+          const d = Math.hypot(c.x - bh.x, c.y - bh.y);
+          if (d < bh.r * 1.5) { c.fall = (c.fall || 0) + dt * (1.6 - d / bh.r) * .6; if (c.fall >= 1) { c.gone = true; S.note(mtof(33 + (Math.random() * 12 | 0)), { g: .05, d: 1.2, glide: .5 }); } }
+        }
+        if (c.fall) { const k = Math.min(1, c.fall) ** 2; c.x = lerp(c.x, bh.x, k); c.y = lerp(c.y, bh.y, k); }
       }
       if (ticks && T - lastTick > .03) {
         lastTick = T;
@@ -1696,13 +1856,20 @@ function Relativity() {
       g.stroke();
       g.lineCap = 'round';
       for (const c of C) {
-        const r = c.rate, col = `${lerp(255, 236, r) | 0},${lerp(90, 228, r) | 0},${lerp(60, 214, r) | 0}`;
+        if (c.gone) continue;
+        const r = c.rate, col = `${lerp(255, 236, r) | 0},${lerp(90, 228, r) | 0},${lerp(60, 214, r) | 0}`, Rr = R * (1 - Math.min(1, c.fall || 0) * .9);
         g.strokeStyle = `rgba(${col},.3)`; g.lineWidth = 1;
-        g.beginPath(); g.arc(c.x, c.y, R, 0, TAU); g.stroke();
-        g.fillStyle = `rgba(${col},.5)`; g.fillRect(c.x - .8, c.y - R + 2, 1.6, 2.4);
+        g.beginPath(); g.arc(c.x, c.y, Rr, 0, TAU); g.stroke();
+        g.fillStyle = `rgba(${col},.5)`; g.fillRect(c.x - .8, c.y - Rr + 2, 1.6, 2.4);
         const a = c.tau - Math.PI / 2;
         g.strokeStyle = `rgba(${col},.95)`; g.lineWidth = 1.6;
-        g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(c.x + Math.cos(a) * R * .82, c.y + Math.sin(a) * R * .82); g.stroke();
+        g.beginPath(); g.moveTo(c.x, c.y); g.lineTo(c.x + Math.cos(a) * Rr * .82, c.y + Math.sin(a) * Rr * .82); g.stroke();
+      }
+      if (bh.r > 2) {
+        const rg = g.createRadialGradient(bh.x, bh.y, bh.r * .4, bh.x, bh.y, bh.r * .8);
+        rg.addColorStop(0, 'rgba(255,140,80,.5)'); rg.addColorStop(1, 'rgba(255,140,80,0)');
+        g.fillStyle = rg; g.beginPath(); g.arc(bh.x, bh.y, bh.r * .8, 0, TAU); g.fill();
+        g.fillStyle = '#000'; g.beginPath(); g.arc(bh.x, bh.y, bh.r * .42, 0, TAU); g.fill();
       }
     }
   };
@@ -1759,6 +1926,7 @@ function ignite() {
   if (ign >= 0 || started) return;
   ign = 0;
   S.init();
+  if (TWIN) found('twin');
   try { if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') DeviceOrientationEvent.requestPermission().catch(() => {}); } catch (e) {}
   try { if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') DeviceMotionEvent.requestPermission().catch(() => {}); } catch (e) {}
   S.note(mtof(62), { g: .12, d: 3.5 }); S.note(mtof(69), { g: .08, d: 3.5, at: .18 }); S.note(mtof(74), { g: .05, d: 4, at: .36 });
@@ -1777,7 +1945,8 @@ function intro(dt) {
     const gr = g.createRadialGradient(cx, cy, 0, cx, cy, 34 + br * 10);
     gr.addColorStop(0, `rgba(255,120,80,${.18 + br * .1})`); gr.addColorStop(1, 'rgba(255,120,80,0)');
     g.fillStyle = gr; g.fillRect(cx - 50, cy - 50, 100, 100);
-    g.fillStyle = '#f3ebdf'; g.beginPath(); g.arc(cx, cy, 3 + br * 1.3, 0, TAU); g.fill();
+    if (TWIN) for (const sgn of [-1, 1]) { g.fillStyle = '#f3ebdf'; g.beginPath(); g.arc(cx + Math.cos(T * .9) * 12 * sgn, cy + Math.sin(T * .9) * 12 * sgn, 2.6 + br, 0, TAU); g.fill(); }
+    else { g.fillStyle = '#f3ebdf'; g.beginPath(); g.arc(cx, cy, 3 + br * 1.3, 0, TAU); g.fill(); }
     if (T > 5) {
       const k = (T % 4.5) / 4.5;
       g.strokeStyle = `rgba(236,228,214,${(1 - k) * .22})`; g.lineWidth = 1;
@@ -1797,6 +1966,9 @@ function loop(now) {
   requestAnimationFrame(loop);
   let dt = (now - last) / 1000; last = now;
   if (!(dt > 0)) dt = 1 / 60; if (dt > .1) dt = .1;
+  // when the phone is nearly out of battery, the piece is tired too
+  const tired = !!(BAT && !BAT.charging && BAT.level < .15);
+  if (tired) { dt *= .65; if (started && !SESSION.tired) { SESSION.tired = true; found('tired'); } }
   T += dt;
   if (hasTilt) { TILT.x = lerp(TILT.x, tiltRaw.x, .08); TILT.y = lerp(TILT.y, tiltRaw.y, .08); TILT.rx = TILT.x; TILT.ry = TILT.y; }
   else if (HOVER.t > 0) { TILT.x = lerp(TILT.x, (HOVER.x / W - .5) * .8, .04); TILT.y = lerp(TILT.y, (HOVER.y / H - .5) * .8, .04); }
@@ -1818,6 +1990,7 @@ function loop(now) {
       if (k >= 1) { door = null; buzz(25); S.bell(scaleNote(62, 9), 0, .5); go(randomOther()); }
     }
   }
+  if (tired) { g.fillStyle = 'rgba(5,4,7,.12)'; g.fillRect(0, 0, W, H); }
   if (phase === 'idle' && T - mStart > cur.dur && T - lastInput > 6 && !P.size) go(nextIdx());
 }
 requestAnimationFrame(loop);

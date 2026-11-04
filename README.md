@@ -40,6 +40,32 @@ iPhone asks for motion permission on the first tap.
 
 It remembers you (in `localStorage` only, nothing leaves the device). Your past gestures come back as a ghost, every visit adds a star to the night sky, and every visit has a new invented alphabet, a new flow field, new vessel shapes and a new tunnel. The tab title changes when you look away.
 
+## Secrets (spoilers)
+
+None of these is hinted at, and missing them costs nothing. Each first discovery adds one gold star to the night sky in Absence. That is the only record.
+
+| Where | Secret | Depends on |
+|---|---|---|
+| Shy | Leave the formed eye alone and hold the phone still, and it falls asleep to a lullaby. Touch wakes it with a start | Patience; it tires sooner between 10 pm and 5 am |
+| Shy | Tap exactly while it blinks and it winks back | Timing |
+| Unbreaking | Tap a vessel in the instant it breaks (a quick double tap): time stops, the shards hang, then rewind | Timing |
+| Unbreaking | Get all three vessels whole at once: they ring together and stay gold for the rest of the visit | Speed |
+| The Cave | Tap the little figure and it turns and walks away. It doesn't come back this visit | Curiosity |
+| Asemic | On a full or new moon, the hidden sentence is about tonight's moon | The real moon |
+| Droste | Hold perfectly still at the exact centre of the tunnel and you fall through to the eye | Stillness |
+| Absence | Tap a falling star to keep a wish (a pale star, forever) | Real darkness, luck |
+| Absence | Tap the real moon and the blossoms turn silver | The moon being up |
+| Absence | On the anniversary of your first visit, the tree is in full golden bloom | A year |
+| Sunflower | Bend the angle to a Fibonacci number of spokes (5, 8, 13, 21, 34, 55) and hold it | Precision |
+| Three Bodies | If exactly two suns are left and stay together, they marry: gold trails, a duet | Chaos, luck |
+| Butterfly | Tap the orange point itself and the two butterflies become one | Aim |
+| Chladni | Hold one note without moving for eight seconds and the plate resonates and throws its sand | Patience |
+| Epicycles | Draw a near-perfect circle: it needs only one circle, and it turns gold | A steady hand |
+| Relativity | Three fingers make an event horizon that swallows clocks | Three fingers |
+| Relativity | At the real top of the hour, the clocks strike the hour together and resynchronise | The clock |
+| Everywhere | Below 15% battery, unplugged, the piece is tired: slower and dimmer | Your battery (Chrome/Android) |
+| Opening | At a mirror minute (1:11, 2:22, 10:10, 11:11, 12:12…) the first dot is two | The clock |
+
 ## Context and privacy
 
 Every visit is different, and it knows *when* you are:
