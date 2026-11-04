@@ -40,6 +40,17 @@ iPhone asks for motion permission on the first tap.
 
 It remembers you (in `localStorage` only, nothing leaves the device). Your past gestures come back as a ghost, every visit adds a star to the night sky, and every visit has a new invented alphabet, a new flow field, new vessel shapes and a new tunnel. The tab title changes when you look away.
 
+## Context and privacy
+
+Every visit is different, and it knows *when* you are:
+
+- It remembers which movements you've seen and starts you somewhere you haven't been.
+- Absence shows the real night sky above you right now: the brightest stars (Orion, the Plough, Cassiopeia, the Southern Cross), the Moon at its actual phase and position, and a sky that follows the real Sun through night, twilight and day. It turns with your phone's compass where there is one.
+- The blossoms follow your season (frost, blossom, leaf, turning), and hemisphere-aware touches use your timezone.
+- Asemic's fleeting words appear in your language (English, Spanish, French, German, Portuguese or Italian).
+
+Without permission it only uses the clock, timezone and language, which every page can read. **Location is opt-in only:** double-tap in Absence and the browser asks. If allowed, the coordinates are rounded to about 1 km, used to refine the sky and give that place its own tree, and are never stored or sent anywhere. Everything it remembers lives in this browser's `localStorage`. The site also has the shared Google Analytics tag, which sees ordinary page visits.
+
 ## Tech
 
 One file, `index.html`: Canvas 2D and Web Audio, no dependencies and no build step. It's hosted on GitHub Pages from `main`, with the custom domain set in `CNAME`. Append `#m0` to `#m11` to the URL to open a specific movement.
