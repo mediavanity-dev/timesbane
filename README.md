@@ -15,16 +15,16 @@ The opening also reflects your history:
 - On your 10th, 50th, 100th, 250th, 500th and 1000th visits, a gold ring surrounds it.
 - If you come at an hour you've never visited before (after five visits), the dot is pale blue.
 
-## The sixteen movements
+## The twenty-four movements
 
-They drift into one another on their own. Add `#m0` to `#m15` to the URL to open one directly.
+They drift into one another on their own. Add `#m0` to `#m23` to the URL to open one directly. A twenty-fifth is hidden (see *Secrets*).
 
 | # | Movement | Idea | What happens and what you can do |
 |---|---|---|---|
 | 0 | Shy | Looking at something changes it | A flowing swarm of light. Touch and everything freezes, desaturates and goes quiet, and you hear a heartbeat (with a vibration on Android). Let go and the swarm rushes to where your finger was. Leave it alone and hold the phone still, and it slowly forms an eye that blinks and looks at you, or at where you were, or at the ghost of your past gestures. A shake scatters it |
 | 1 | Unbreaking | Time running backwards | Paper covered in black shards. Tap and the shards fly back together (accelerating, as in a rewound film) into a vessel with gold kintsugi seams, which rings like a bell. After a few seconds it breaks again; tap a whole vessel to break it sooner. Drag to sweep debris, tilt to slide it, shake to shatter everything. Vessel shapes are new each visit |
 | 2 | The Cave | Dimensions we can't see | A tesseract, a 24-cell or a Clifford torus turning in four dimensions, coloured by its depth in the fourth. You hear each vertex as it crosses into our 3D. Drag (or scroll) to rotate in 4D, tap to make it glow, double-tap for the next shape, tilt or shake to spin it. A small figure on the floor watches its shadow |
-| 3 | Asemic | Meaning comes from the reader | An invisible hand writes in a script that isn't a language (a new alphabet every visit). Every few words a real word appears and soon fades; across many words they form sentences ("nobody is writing this", "meaning arrives from you"…) in your language. Drag to smudge the wet ink, tap to move the pen |
+| 3 | Asemic | Meaning comes from the reader | An invisible hand writes in a script that isn't a language (a new alphabet every visit). Every few words a *real* word appears in letters and soon fades, but it is in code: each letter is shifted along the alphabet by an amount set by today's date (1 to 25 places, a new cipher each day of the month, accents dropped). Decoded, across many words they form sentences ("nobody is writing this", "meaning arrives from you"…) in your language. Drag to smudge the wet ink, tap to move the pen |
 | 4 | Droste | Self-reference | A rainbow tunnel of phone screens inside phone screens. Draw into it and your lines spiral down, with a voice that echoes (the sound repeats itself, like the picture). Hold still and the tunnel reverses, pouring screens out toward you. Tilt bends it, scrolling pushes it in or out, shake bursts it; speed and spin are new each visit |
 | 5 | Absence | Things grow when you aren't looking | A tree under the real sky. Hold your finger down and darkness spreads (eyes closed); in the dark the tree grows fast, with a rising melody. Leave the tab and it grows while you're gone. Once in bloom, petals fall, the tree dies and a new seed sprouts. Tilt is wind, shake knocks the blossoms off. One star for each of your visits; the newest one pulses |
 | 6 | Sunflower | One irrational number | Seeds spiral out at the golden angle, 137.5°. Your finger (or the scroll wheel) bends the angle by fractions of a degree and the flower collapses into spokes, each count playing a note. Let go and it heals with a bell |
@@ -37,6 +37,14 @@ They drift into one another on their own. Add `#m0` to `#m15` to the URL to open
 | 13 | Today | One rule, one hour, everyone | A pattern grown from a single cellular-automaton rule, chosen and seeded by the current hour (UTC). Everyone on Earth looking at it sees the same pattern at the same moment. Tap a cell and your version diverges: your changes spread down the page in ember, yours alone |
 | 14 | Pendulums | Your gravity, the real minute | Eighteen pendulums whose lengths are set by the actual strength of gravity at your latitude. They are released together at the top of every real minute, drift into waves and patterns, and line up again at the next minute, for everyone at once. Drag across them to strum |
 | 15 | Skin | Patterns from two chemicals (Gray–Scott reaction-diffusion) | The same equations that paint spots, stripes, coral and mazes on animals. Today's pattern type is set by the date (and nudged by the temperature where you are). Paint with your finger to seed it; shake scatters seeds |
+| 16 | Rings | A lock made of light | Concentric rings around a light, each with one gap. Drag a ring to turn it; it also turns the next ring out, by a ratio that's new each visit (sometimes the other way). Line up every gap and the light escapes. Each ring hums an interval that's out of tune until its gap agrees with the one inside it, so you can solve it by ear. The rings drift until you touch them. Scroll turns the ring under the mouse; double-tap adds a ring; shake scrambles them |
+| 17 | Labyrinth | Finding your way by sound | A new maze every visit, in the dark, lit only around a rolling light. Tilt the phone to roll it (or drag: the light follows your finger or the mouse). Walls you've passed stay faintly remembered. The heart of the maze glows and hums; the hum gets louder and moves across the stereo field as you get closer. Reach it and the maze lights up in gold; the next one is bigger. Double-tap for a new maze; shake rattles the light |
+| 18 | Ant | One rule, enormous consequences (Langton's ant) | A creature turns one way on one colour and the other way on another, recolouring as it leaves. A new rule each visit, from the classic two-colour ant to multi-colour turmites that grow symmetric shapes or spirals. It starts slowly and speeds up; each step is a note. Tap to add another ant (up to five); double-tap for a new rule; shake erases patches |
+| 19 | Flock | Order from neighbours (a murmuration) | Each bird only follows its nearest neighbours, and the whole sky moves as one. Your finger is a falcon: they part around it. Tilt is wind. Each visit gets its own flock temperament. Their wings are a soft hiss that rises with their speed |
+| 20 | Harmonograph | Ratios you can see and hear | Two pendulums share one pen; their frequencies are *almost* a simple ratio (3:2, 4:3, 5:4…), so the drawing slowly precesses and you hear the two tones beat. Drag sideways to tune the ratio (or scroll for fine tuning), up and down to change the phase; tap to swing it again |
+| 21 | Sandpile | Self-organised criticality | Grains fall one at a time onto the centre; any square holding four spills one onto each neighbour. The pile grows into a fractal. Hold a finger to pour grains there. Each avalanche is heard by its size, from a tick to a long roar. Shake drops a grain everywhere at once |
+| 22 | Call | Call and response | Five glowing stones sing a short phrase, then wait. Tap the stones to sing it back: get it right and the phrase grows by one note; get it wrong and it simply sings again. No answer, and it sings again later. The scale and key are new each visit. Shake shortens the phrase |
+| 23 | Frost | Diffusion-limited aggregation | Wandering specks stick wherever they touch the crystal, and it grows into branches. Its symmetry is new each visit (none, four-fold, six-fold like a snowflake, eight or twelve). Tilt is the wind and bends the growth; your finger is warm and melts it. Colder weather where you are makes it grow faster and bluer. Shake starts again |
 
 ## Getting around
 
@@ -53,10 +61,10 @@ The site detects a mouse and adapts. Sound works the same way (it starts with yo
 
 | Input | Does |
 |---|---|
-| Click, drag | Same as tap and drag |
+| Click, drag | Same as tap and drag (in the Labyrinth, the light follows the pressed mouse) |
 | Move the mouse | Stands in for tilt (the Cave, Droste, Absence); Shy's eye follows it |
 | Shake the mouse rapidly side to side | Same as shaking the phone |
-| Scroll wheel | Rotates the Cave, pushes Droste's tunnel, bends the Sunflower, turns the Butterfly, steps Chladni's note |
+| Scroll wheel | Rotates the Cave, pushes Droste's tunnel, bends the Sunflower, turns the Butterfly, steps Chladni's note, turns a ring in Rings, fine-tunes the Harmonograph |
 | Right-click | Same as double-tap |
 | Hold the space bar | A held finger wherever the mouse is (freeze Shy, grow the tree in the dark, reverse Droste…) |
 | Hold Shift while pressing in Relativity | An event horizon (the three-finger secret) |
@@ -67,6 +75,12 @@ The site detects a mouse and adapts. Sound works the same way (it starts with yo
 | F | Fullscreen |
 
 The cursor disappears after a few seconds without movement.
+
+### Big screens, small machines (desktops, tablets, Chromebooks)
+
+- **Resolution follows a pixel budget,** not the screen. A large high-density screen would otherwise ask for 8 million pixels a frame; slow frames are what made the sound choppy on Chromebooks.
+- **It adapts as it goes.** If frames stay slow, it draws fewer pixels (and plays fewer voices at once) until it runs smoothly, and climbs back when there's headroom. The level is remembered for the next visit.
+- **Sound has room to breathe.** On computers, and on machines with four or fewer cores, the audio uses larger buffers and a shorter reverb, and every sound is scheduled a moment ahead, so a late frame can't clip it or bunch a rhythm.
 
 ## Sensors and inputs
 
@@ -191,7 +205,7 @@ Some festivals are also recognised without the network, from built-in date table
 
 ### Language and seasons
 
-- **Language:** Asemic's real words are in your browser language (English, Spanish, French, German, Portuguese or Italian).
+- **Language:** Asemic's hidden words are in your browser language (English, Spanish, French, German, Portuguese or Italian), and always in code (see the Asemic row above).
 - **Seasons:** the tree carries frost, blossom, leaves or turning leaves for your season and hemisphere.
 - **Hemisphere:** the Sunflower turns the other way in the south, and stands still on the equator.
 
@@ -209,6 +223,8 @@ Some festivals are also recognised without the network, from built-in date table
 None of these is hinted at, and missing them costs nothing. Each first discovery adds a gold star to the night sky in Absence; that is the only record.
 
 The secrets you can make happen by *doing* something sit on the points of a hidden constellation. Find them all and its lines join: the constellation is Shy's eye.
+
+The later movements have a second constellation, lower in the sky: a key. Complete it, and the first time each visit that you open the corner door, it leads to a twenty-fifth movement that is never in the rotation: the **Reliquary**, where every gold star you've kept turns slowly around you, the ghost of your hand draws in gold, and each star rings when you touch it.
 
 **Doable (the constellation)**
 
@@ -230,6 +246,19 @@ The secrets you can make happen by *doing* something sit on the points of a hidd
 | Today | Change the pattern until your difference reaches both edges of the page |
 | Pendulums | Strum across every pendulum in one sweep: they ring as a chord and turn gold |
 | Skin | Paint until the pattern reaches all four edges |
+
+**Doable (the key)**
+
+| Where | Secret |
+|---|---|
+| Rings | Line up every gap so the light gets out (it only counts once you've touched the rings) |
+| Labyrinth | Reach the heart of the maze |
+| Ant | Under the classic two-colour rule, wait: after about ten thousand steps of chaos the ant builds a straight road and leaves |
+| Flock | Circle your finger steadily around the flock until they all turn around one empty centre (a mill) and hold it for a few seconds: they turn gold |
+| Harmonograph | Tune the two pendulums to an exact simple ratio and hold it: the ink turns gold and a bell rings at that interval |
+| Sandpile | One grain, dropped on its own, sets off an avalanche of more than 2,500 topplings (pour first, then let go) |
+| Call | Answer the stones correctly until the phrase is seven notes long: they turn gold |
+| Frost | Let the crystal grow until it reaches the edge |
 
 **Gifts (they happen to you)**
 
@@ -276,6 +305,15 @@ The tab title is "timesbane" while you watch. When you switch tabs it changes to
 | Today | everyone is seeing this |
 | Pendulums | they will line up again at the top of the minute |
 | Skin | it is still growing patterns |
+| Rings | it is still locked |
+| Labyrinth | it is still in there |
+| Ant | it is still walking |
+| Flock | they are still turning |
+| Harmonograph | it is almost in tune |
+| Sandpile | it is about to fall |
+| Call | it is waiting for an answer |
+| Frost | it is still freezing |
+| Reliquary | everything you found |
 
 ## Sound
 
@@ -288,7 +326,15 @@ Everything is synthesised live with Web Audio: a drone in a different key for ea
 - clock ticks (Relativity);
 - new Wikipedia pages (Murmur);
 - the automaton's density (Today);
-- pendulums crossing the middle (Pendulums).
+- pendulums crossing the middle (Pendulums);
+- each ring's tuning against the one inside it (Rings);
+- the heart of the maze, louder as you near it, and the walls you hit (Labyrinth);
+- the ant's steps (Ant);
+- the flock's speed (Flock);
+- the two pendulums beating against each other (Harmonograph);
+- each avalanche, by its size (Sandpile);
+- the phrase itself (Call);
+- each speck freezing on, pitched by its distance from the centre (Frost).
 
 ## Tech
 
@@ -297,3 +343,4 @@ Everything is synthesised live with Web Audio: a drone in a different key for ea
 - **Hosting:** GitHub Pages from `main`, with the custom domain set in `CNAME`.
 - **DNS:** GoDaddy DNS for `timesbane.com` has four `A` records on `@` pointing to 185.199.108.153, 185.199.109.153, 185.199.110.153 and 185.199.111.153, plus a `CNAME` on `www` pointing to `mediavanity-dev.github.io`.
 - **Dashboard:** the site appears on the repo dashboard at https://mediavanity-dev.github.io/dashboard/.
+- **Checking it:** `node tools/check.mjs` opens every movement in headless Chrome/Edge, plays with it (tap, drag, hold, scroll, shake) and reports script errors and frame times. `--desk` is desktop-sized, `--slow` throttles the CPU 4x like a low-power Chromebook, `--shots DIR` saves screenshots, `--only 3,17` picks movements. `node tools/profile.mjs N` profiles one movement. Live data is stubbed so runs are repeatable.
