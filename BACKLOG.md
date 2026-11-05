@@ -7,7 +7,10 @@ What's left for timesbane. Everything that's been built is in the [README](READM
 - **Wordless and restrained.** No instructions, no UI, no score. Nothing new may get in the way of someone who never finds it.
 - **Optional and robust.** Each external source is cached, fails silently, and the piece works fully without it.
 - **Privacy.** Location stays opt-in and rounded, and is only sent where the README's privacy section says it is. Any new place-based service gets listed there first.
-- **Discoveries leave a gold star.** New secrets call `found(id)`. Doable ones go in `DOABLE` and onto the constellation (it then needs more points).
+- **Discoveries leave a gold star.** New secrets call `found(id)`. Doable ones go in `DOABLE` (the eye, full at 16) or `DOABLE2` (the key, full at 8); a third group needs a third constellation.
+- **No real words on screen in the movements.** Asemic's words are always enciphered.
+- **No astrology.** The sky is astronomy only.
+- **Fast on small machines.** Run `node tools/check.mjs --desk --slow` before publishing; a movement that can't hold ~30 fps there needs fewer draw calls or pixels.
 
 ## Not built, and why
 
@@ -35,9 +38,9 @@ What's left for timesbane. Everything that's been built is in the [README](READM
   - the world layer (`DAY`, `THEME`, `LIVE`, `cached()`, `poll()`, `worldFX()`);
   - `found(id)` for discoveries;
   - each movement's `frame`, `down`, `up`, `move`, `dbl`, `shake`, `wheel`, `thunder` and `away` handlers.
-- **New movements:** add them to `MOVES` and bump `VERSION`, so returning visitors are steered to them.
+- **New movements:** add them to `MOVES` before `Reliquary` (which must stay last: it's hidden from the rotation) and bump `VERSION`, so returning visitors are steered to them.
 - **Patch safely:** edit with a script that checks each anchor appears exactly once.
-- **Test** in headless Edge with:
+- **Test** with `node tools/check.mjs` (and `--desk`, `--slow`). It runs in headless Edge/Chrome with:
   - a timer-driven frame loop;
   - fake `fetch` and `EventSource` (real network requests stall headless virtual time);
   - synthetic pointer, key, wheel, motion and orientation events;

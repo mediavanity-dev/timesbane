@@ -2,7 +2,7 @@
 // The page itself is fetched from the network first, so every update arrives the moment it is published;
 // a copy is kept so the piece still opens offline. Fonts are cached once. Live data is never cached here
 // (the page keeps its own small, time-limited cache of those).
-const CACHE = 'timesbane-v3';
+const CACHE = 'timesbane-v4';
 
 self.addEventListener('install', e => {
   self.skipWaiting();
