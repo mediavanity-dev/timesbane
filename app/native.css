@@ -1,0 +1,20 @@
+/* The patron's page and the shutter flash: the only words in the app, outside the piece. */
+.tb-sheet { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; overflow-y: auto;
+  padding: calc(24px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom));
+  background: rgba(5, 4, 7, .88); opacity: 0; transition: opacity .25s ease; touch-action: pan-y; -webkit-user-select: text; user-select: text; }
+.tb-sheet[hidden] { display: none; }
+.tb-sheet.on { opacity: 1; }
+.tb-card { width: 100%; max-width: 420px; margin: auto; color: #ece4d6; font: 17px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.tb-title { margin: 0 0 12px; font: italic 500 34px/1.1 "Cormorant Garamond", Georgia, serif; color: #f3ebdf; outline: none; }
+.tb-body { margin: 0 0 12px; color: rgba(236, 228, 214, .85); }
+.tb-list { margin: 0 0 24px; padding-left: 20px; color: rgba(236, 228, 214, .85); }
+.tb-list li { margin: 6px 0; }
+.tb-card button { display: block; width: 100%; min-height: 50px; margin: 10px 0 0; border: 0; border-radius: 25px; font: inherit; cursor: pointer; touch-action: manipulation; }
+.tb-main { background: #ffcf6b; color: #050407; font-weight: 600 !important; }
+.tb-main:disabled { opacity: .7; }
+.tb-quiet { background: rgba(236, 228, 214, .1); color: #ece4d6; }
+.tb-link { background: none; color: rgba(236, 228, 214, .65); font-size: 15px !important; text-decoration: underline; min-height: 44px !important; }
+.tb-note { min-height: 1.4em; margin: 14px 0 0; font-size: 15px; color: rgba(236, 228, 214, .7); }
+.tb-card button:focus-visible { outline: 2px solid #ffcf6b; outline-offset: 2px; }
+.tb-flash { position: fixed; inset: 0; z-index: 11; background: #f3ebdf; opacity: .85; pointer-events: none; transition: opacity .6s ease; }
+.tb-flash.go { opacity: 0; }

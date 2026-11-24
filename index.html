@@ -193,7 +193,7 @@ try {
   if (navigator.permissions && navigator.geolocation) navigator.permissions.query({ name: 'geolocation' }).then(r => { if (r.state === 'granted') askLocation(); }).catch(() => {});
 } catch (e) {}
 const pastStrokes = MEM.strokes.slice();
-function saveMem() { try { localStorage.setItem('timesbane', JSON.stringify(MEM)); localStorage.removeItem('caa'); } catch (e) {} }
+function saveMem() { const j = JSON.stringify(MEM); try { localStorage.setItem('timesbane', j); localStorage.removeItem('caa'); } catch (e) {} if (window.tbSave) window.tbSave(j); }
 // The only record of a discovery is a gold star in the night sky of Absence.
 function found(id) { const first = !MEM.found[id]; if (first) { MEM.found[id] = Date.now(); saveMem(); } return first; }
 const SESSION = {};
@@ -201,6 +201,8 @@ const SESSION = {};
 const TWIN = (() => { const d = new Date(), h = d.getHours() % 12 || 12, m = d.getMinutes(), t = `${h}${String(m).padStart(2, '0')}`; return new Set(t).size === 1 || (h >= 10 && h === m); })();
 let BAT = null;
 try { if (navigator.getBattery) navigator.getBattery().then(b => { BAT = b; }).catch(() => {}); } catch (e) {}
+// the iPhone app reports the battery itself
+window.tbSetBattery = (level, charging) => { BAT = { level, charging }; };
 saveMem();
 setInterval(() => { if (!document.hidden) { MEM.total += 5; saveMem(); } }, 5000);
 addEventListener('pagehide', saveMem);
@@ -4661,7 +4663,11 @@ addEventListener('touchend', unlock, { passive: true });
 addEventListener('click', unlock);
 addEventListener('keydown', e => { if (!started && (e.key === 'Enter' || e.key === ' ')) ignite(); });
 
-document.getElementById('nx').addEventListener('click', e => { e.stopPropagation(); S.init(); if (started && phase === 'idle') { go(nextIdx()); S.note(mtof(74), { g: .04, d: 1.2 }); } });
+// in the app, holding the turning mark opens the patron's page instead
+let nxHold = 0, nxLong = false;
+document.getElementById('nx').addEventListener('pointerdown', () => { nxLong = false; clearTimeout(nxHold); if (window.tbPatron) nxHold = setTimeout(() => { nxLong = true; window.tbPatron(); }, 800); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) document.getElementById('nx').addEventListener(ev, () => clearTimeout(nxHold));
+document.getElementById('nx').addEventListener('click', e => { e.stopPropagation(); if (nxLong) { nxLong = false; return; } S.init(); if (started && phase === 'idle') { go(nextIdx()); S.note(mtof(74), { g: .04, d: 1.2 }); } });
 document.getElementById('sd').addEventListener('click', e => { e.stopPropagation(); S.init(); const on = S.toggle(); e.currentTarget.classList.toggle('off', !on); });
 
 let rzT = 0;

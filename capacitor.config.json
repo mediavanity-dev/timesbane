@@ -1,0 +1,10 @@
+{
+  "appId": "com.mediavanity.timesbane",
+  "appName": "Art in Nature",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "allowsLinkPreview": false,
+    "backgroundColor": "#050407"
+  }
+}

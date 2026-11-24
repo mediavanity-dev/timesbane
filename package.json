@@ -1,0 +1,23 @@
+{
+  "name": "timesbane",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "timesbane: a wordless artwork. The website (index.html) and its iPhone app (Capacitor).",
+  "scripts": {
+    "check": "node tools/check.mjs",
+    "build": "node scripts/build-www.mjs",
+    "ios:sync": "npm run build && npx cap sync ios",
+    "icons": "node scripts/make-icons.mjs",
+    "smoke": "npm run build && node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.6.2",
+    "@capacitor/ios": "8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2",
+    "playwright-core": "1.65.1",
+    "sharp": "0.35.5"
+  }
+}

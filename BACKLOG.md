@@ -1,6 +1,7 @@
 # Backlog
 
-What's left for timesbane. Everything that's been built is in the [README](README.md).
+What's left for timesbane. Everything that's been built is in the [README](README.md). Plans for an iPhone app,
+and for making the content far more variable, are in [IPHONE_APP.md](IPHONE_APP.md).
 
 ## Ground rules
 
