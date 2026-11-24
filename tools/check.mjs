@@ -42,7 +42,7 @@ const PORT = server.address().port;
 const profileDir = mkdtempSync(join(tmpdir(), 'tb-check-'));
 const [vw, vh] = DESK ? [1920, 1080] : [390, 844];
 const browser = spawn(browserPath, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profileDir}`, '--no-first-run',
-  '--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--window-size=${vw},${vh}`, 'about:blank'], { stdio: 'ignore' });
+  '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', `--window-size=${vw},${vh}`, 'about:blank'], { stdio: 'ignore' });
 let target, port;
 for (let k = 0; k < 75 && !target; k++) {
   try { port ||= +readFileSync(join(profileDir, 'DevToolsActivePort'), 'utf8').split(/\r?\n/)[0]; target = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === 'page'); }
@@ -80,7 +80,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: `
   let lastF = 0;
   window.requestAnimationFrame = (cb) => raf((t) => { if (lastF) window.__frames.push(t - lastF); lastF = t; cb(t); });
   // the test visitor has found the key, so the hidden last movement can be opened too
-  try { localStorage.setItem('timesbane', JSON.stringify({ visits: 7, first: Date.now() - 9e8, seen: [], strokes: [], found: Object.fromEntries(['lock','heart','highway','mill','tuned','avalanche','reply','frost'].map(k => [k, 1])) })); } catch (e) {}
+  try { localStorage.setItem('timesbane', JSON.stringify({ visits: 7, first: Date.now() - 9e8, seen: [], strokes: [], found: Object.fromEntries(['lock','heart','highway','mill','tuned','avalanche','reply','frost','sync','network','interference','endless','aperiodic','upright','wipe','spring','depth','corona','moon','mote','yearlong','turn'].map(k => [k, 1])) })); } catch (e) {}
 ` });
 
 const n = await (async () => { await send('Page.navigate', { url: `http://localhost:${PORT}/` }); await sleep(1500); return evalJS('typeof MOVES !== "undefined" ? MOVES.length : 0'); })();
@@ -97,6 +97,7 @@ const results = [];
 for (const i of list) {
   errors.length = 0; if (process.env.DBG) console.error("nav", i);
   await send('Page.navigate', { url: `http://localhost:${PORT}/?t=${Date.now()}#m${i}` });
+  await send('Page.bringToFront'); await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await sleep(1200);
   if (process.env.DBG) console.error("loaded", i); await evalJS("window.__frames = []"); if (process.env.DBG) console.error("reset", i);
   const cx = vw / 2, cy = vh / 2, t0 = Date.now(), until = t0 + SECS * 1000;

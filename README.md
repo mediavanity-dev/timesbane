@@ -15,9 +15,9 @@ The opening also reflects your history:
 - On your 10th, 50th, 100th, 250th, 500th and 1000th visits, a gold ring surrounds it.
 - If you come at an hour you've never visited before (after five visits), the dot is pale blue.
 
-## The twenty-four movements
+## The movements
 
-They drift into one another on their own. Add `#m0` to `#m23` to the URL to open one directly. A twenty-fifth is hidden (see *Secrets*).
+Thirty-eight movements drift into one another on their own. Add `#m0` to `#m37` to the URL to open one directly. Four more are hidden or rare (see *Secrets*): the Reliquary (`#m38`), the Hourglass (`#m39`), Once (`#m40`) and the Full Moon (`#m41`).
 
 | # | Movement | Idea | What happens and what you can do |
 |---|---|---|---|
@@ -45,6 +45,26 @@ They drift into one another on their own. Add `#m0` to `#m23` to the URL to open
 | 21 | Sandpile | Self-organised criticality | Grains fall one at a time onto the centre; any square holding four spills one onto each neighbour. The pile grows into a fractal. Hold a finger to pour grains there. Each avalanche is heard by its size, from a tick to a long roar. Shake drops a grain everywhere at once |
 | 22 | Call | Call and response | Five glowing stones sing a short phrase, then wait. Tap the stones to sing it back: get it right and the phrase grows by one note; get it wrong and it simply sings again. No answer, and it sings again later. The scale and key are new each visit. Shake shortens the phrase |
 | 23 | Frost | Diffusion-limited aggregation | Wandering specks stick wherever they touch the crystal, and it grows into branches. Its symmetry is new each visit (none, four-fold, six-fold like a snowflake, eight or twelve). Tilt is the wind and bends the growth; your finger is warm and melts it. Colder weather where you are makes it grow faster and bluer. Shake starts again |
+| 24 | Fireflies | Synchrony from neighbours (pulse-coupled oscillators) | Each firefly flashes on its own clock and, when it does, pushes nearby clocks forward. Over a minute or two the field falls into step and flashes as one, with a chord. A touch scatters the ones near it; a tap is a flash of your own that nudges its neighbours. Tilt drifts them |
+| 25 | Mould | A network with no planner (Physarum) | Thousands of blind walkers each follow the scent the others leave. Tap to place food (up to five) and they build roads between it. Drag to wipe trails; double-tap clears the food; shake starts again. The sensing angles and colour are new each visit |
+| 26 | Ripple | Waves add up (the wave equation) | A dark pool. Tap to drop a stone; drag to trail a wake; hold and your finger beats on the water; double-tap to plant a source that keeps beating (up to three), so their waves cross and cancel. Real rain falls on it |
+| 27 | Staircase | A scale that rises for ever (Shepard tones) | A spiral stair seen from above, twelve steps to a turn and each turn half the size, so it never ends. Drag up or down (or scroll) to climb or descend; every step is a Shepard tone that rises without ever getting higher |
+| 28 | Penrose | Order that never repeats (Penrose tiling) | Two rhombs cover the floor without ever repeating. The tiling keeps dividing for the first half minute. Tap a tile and every tile of the same shape turned the same way lights and rings. Double-tap or scroll to zoom; shake turns it |
+| 29 | Swing | Chaos you can hold (the double pendulum) | A pendulum hung from a pendulum, with a pale ghost started a billionth of a radian away; after a while they split. Drag the lower weight anywhere and let go; double-tap throws it; shake knocks it |
+| 30 | Glass | Rain on a window at night | A blurred city behind misted glass. Wipe the mist with your finger; it comes back. Drops gather, grow heavy, run and merge, clearing tracks as they go. Tap to add a drop; shake swells them all. Real rain makes more |
+| 31 | Rivers | Water carves land (erosion) | New land every visit; rain finds its way down and cuts valleys. Hold to raise a hill; hold still for three seconds and a spring rises there (up to three). Double-tap removes the springs; shake makes new land. Real rain adds rain |
+| 32 | Deep | A coastline with no bottom (the Mandelbrot set) | It sinks slowly by itself toward a famous region. Tap to steer, hold to dive faster, drag to pan, double-tap to rise, scroll to zoom; shake goes back to the top. At about 10⁻¹³ the numbers run out and it drifts back up. The drone sinks as you go deeper |
+| 33 | Aurora | The Sun's wind, seen | Curtains of light over a dark ridge, as bright as the real geomagnetic activity (NOAA Kp) is now. Swipe to stir them, with a glissando; tilt lifts them |
+| 34 | Tide | The Moon moves the sea | A shore at night or by day, with the waterline where the real Moon puts it (high water when the Moon is overhead or underfoot, stronger near full and new moon). Write in the sand; each wave rubs out what it reaches. Drag the Moon across the sky and the sea follows; let go and the real Moon slowly takes it back |
+| 35 | Motes | Dust in a beam of light | A beam comes in at the angle of the real Sun (or pale from the Moon, or warm from a lamp at night). Fan the air with your finger; tilt is a draught; shake stirs everything. One mote is gold |
+| 36 | Year | Slow time, shared by everyone | Every day of this year on one spiral, each dot sized by how long its daylight is where you are. The past is pale, the future faint, today glows, and the days you came are gold. It takes a real year to finish, for everyone at once. Drag across the days to hear their light: longer days sound higher |
+| 37 | Crossing | Two at once | Two lighter movements run together, one seen through the other, and both answer your touch. A different pair each visit |
+
+## Lenses, crossings and the key of the day
+
+- **Lenses:** now and then a movement is seen through a lens: a mirror, four mirrors, an echo (trails), a window in a window, a slow focus (it comes into focus while you leave it alone, and goes blocky again while you touch it), a slowly drifting colour, a shy grey (touch, and the colour drains), slowed time (touch, and everything nearly stops) or a sway that follows the tilt. Returning visitors meet them more often (up to about two movements in five). **Twist two fingers** to turn to the next lens, or to none.
+- **Crossings:** one of the movements is always two at once (see Crossing above).
+- **The key of the day:** the whole piece is transposed by up to two semitones up or down, a different key each day.
 
 ## Getting around
 
@@ -54,6 +74,8 @@ They drift into one another on their own. Add `#m0` to `#m23` to the URL to open
 - **The corner door:** press and hold the top-left corner. A ring slowly closes, then a door opens to a random movement.
 - **Face-down:** turn the phone face-down, then back up, and you wake somewhere else.
 - **Sound:** the mark in the top-right corner turns sound on and off.
+- **Twist two fingers:** turns the lens.
+- **Tap with three fingers (iPhone app only):** keeps this moment as a picture.
 
 ## On a computer
 
@@ -226,6 +248,12 @@ The secrets you can make happen by *doing* something sit on the points of a hidd
 
 The later movements have a second constellation, lower in the sky: a key. Complete it, and the first time each visit that you open the corner door, it leads to a twenty-fifth movement that is never in the rotation: the **Reliquary**, where every gold star you've kept turns slowly around you, the ghost of your hand draws in gold, and each star rings when you touch it.
 
+The newest movements have a third constellation, below the key: an hourglass. Complete it and the first time each visit that you turn the phone face down and back up, you wake in the **Hourglass**: its sand is every minute you've spent here (gold grains for what you've found). Turn the phone over, tilt it upside down or double-tap to turn the glass.
+
+**Once.** On your tenth visit (or your first visit after it, for anyone already past ten), the piece opens on a movement that happens to each person once and never again: every gesture you have left here, replayed at once in gold, turning together, then a white bloom.
+
+**The Full Moon.** Only on the two or three nights around a real full moon, a movement joins the rotation (and opens the visit): a huge moon rising behind drifting clouds, which rings where you touch it.
+
 **Doable (the constellation)**
 
 | Where | Secret |
@@ -260,6 +288,25 @@ The later movements have a second constellation, lower in the sky: a key. Comple
 | Call | Answer the stones correctly until the phrase is seven notes long: they turn gold |
 | Frost | Let the crystal grow until it reaches the edge |
 
+**Doable (the hourglass)**
+
+| Where | Secret |
+|---|---|
+| Fireflies | Once they flash as one, tap in time with four flashes in a row |
+| Mould | Put down three pieces of food and wait until the mould links all three |
+| Ripple | Keep two beating sources going (double-tap to plant them, or one planted and one held) for six seconds |
+| Staircase | Climb (or descend) 24 steps without turning back |
+| Penrose | Touch a tile of every one of the ten kinds (two shapes, five turns) |
+| Swing | Make it stand on its head: both weights above the pivot for two seconds |
+| Glass | Wipe the window almost completely clear |
+| Rivers | Raise a spring and let its water reach the sea or the edge of the land |
+| Deep | Steer below 10⁻⁹ while the edge of the set is still in view |
+| Aurora | Hold your finger still in the top of the sky for six seconds: the curtains gather into a crown |
+| Tide | Drag the Moon three quarters of the way across the sky |
+| Motes | Keep your finger on the gold mote for three seconds as it drifts |
+| Year | In one stroke, trace the spiral from the first of January to today |
+| Anywhere | Twist through every lens in one visit |
+
 **Gifts (they happen to you)**
 
 | Where | Secret | Depends on |
@@ -277,6 +324,10 @@ The later movements have a second constellation, lower in the sky: a key. Comple
 | Three Bodies | If exactly two suns are left and stay together, they marry: gold trails, a duet | Chaos, luck |
 | Relativity | At the real top of the hour, the clocks strike the hour together and resynchronise | The clock |
 | Everywhere | A public holiday where you live | The calendar |
+| Everywhere | Every lens seen at least once | Time |
+| Aurora | A real geomagnetic storm (Kp 5 or more) | The Sun |
+| Crossing | The first crossing | Luck |
+| Full Moon, Once, Hourglass | Being there | The Moon; your tenth visit; the hourglass |
 | Everywhere | Exactly midnight | The clock |
 | Everywhere | 29 February | The calendar |
 | Everywhere | Tired: slower and dimmer below 15% battery | Your battery (Chrome/Android) |
@@ -313,7 +364,24 @@ The tab title is "timesbane" while you watch. When you switch tabs it changes to
 | Sandpile | it is about to fall |
 | Call | it is waiting for an answer |
 | Frost | it is still freezing |
+| Fireflies | they are falling into step |
+| Mould | it is finding the shortest way |
+| Ripple | the water is still moving |
+| Staircase | it is still going down |
+| Penrose | it is still not repeating |
+| Swing | it is still swinging |
+| Glass | it is still raining |
+| Rivers | the water is finding its way |
+| Deep | it is still sinking |
+| Aurora | the sky is moving |
+| Tide | the sea is coming back |
+| Motes | the dust is still turning |
+| Year | the year is still turning |
+| Crossing | two things are happening at once |
 | Reliquary | everything you found |
+| Hourglass | it is still running |
+| Once | this will not happen again |
+| Full Moon | the moon is full |
 
 ## Sound
 
@@ -334,9 +402,19 @@ Everything is synthesised live with Web Audio: a drone in a different key for ea
 - the two pendulums beating against each other (Harmonograph);
 - each avalanche, by its size (Sandpile);
 - the phrase itself (Call);
-- each speck freezing on, pitched by its distance from the centre (Frost).
+- each speck freezing on, pitched by its distance from the centre (Frost);
+- the field flashing together (Fireflies);
+- the food the mould is reaching (Mould);
+- stones in the pool (Ripple);
+- endless Shepard tones (Staircase);
+- the ten kinds of tile (Penrose);
+- the lower weight sweeping through the bottom, by its speed (Swing);
+- the length of each day's light (Year);
+- the depth (Deep), the Moon's pull (Tide) and the waves (Tide).
 
 ## Tech
+
+- **The iPhone app:** the same piece, wrapped with Capacitor (see [APP_STORE.md](APP_STORE.md)). It adds real haptics, works offline, keeps its memory in a file on the phone, and offers a Patron purchase for keepsakes (saved moments and extra widgets).
 
 - **The page:** `index.html` (Canvas 2D and Web Audio, no dependencies, no build step) plus `sw.js` (the service worker). Only the Cormorant Garamond font loads from Google Fonts.
 - **Live data:** Open-Meteo, NOAA SWPC, USGS, wheretheiss.at, NASA NeoWs (demo key), iNaturalist, global-warming.org, carbonintensity.org.uk, Wikimedia EventStreams, mempool.space, Nager.Date, the Art Institute of Chicago and random.org. All are free, called directly from the browser and cached.

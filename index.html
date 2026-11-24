@@ -62,7 +62,7 @@ const easeIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, w | 0); c.height = Math.max(1, h | 0); return c; };
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
-function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
+function buzz(p) { try { if (window.tbHaptic) return window.tbHaptic(p); navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 function reflect(v, lo, hi) { if (v < lo) v = lo + (lo - v); if (v > hi) v = hi - (v - hi); return clamp(v, lo, hi); }
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 const PENTA = [0, 2, 4, 7, 9];
@@ -71,7 +71,7 @@ function rrect(c, x, y, w, h, r) { c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, 
 
 // ---------- canvas ----------
 const cv = document.getElementById('c');
-const g = cv.getContext('2d');
+let g = cv.getContext('2d');
 let W = 0, H = 0, DPR = 1;
 // Resolution follows a pixel budget, not the screen: a big high-density screen (a desktop, a tablet, a
 // Chromebook) otherwise asks for 8 million pixels a frame, the frame rate collapses, and late frames make
@@ -309,7 +309,7 @@ const S = {
     this.pend = [fs, lvl, cut];
     if (!this.c) return;
     const t = this.c.currentTime;
-    this.dv.forEach((v, i) => { const f = fs[i % fs.length]; v.o.frequency.setTargetAtTime(f, t, 1.2); v.o2.frequency.setTargetAtTime(f, t, 1.4); });
+    this.dv.forEach((v, i) => { const f = fs[i % fs.length] * KEYSHIFT; v.o.frequency.setTargetAtTime(f, t, 1.2); v.o2.frequency.setTargetAtTime(f, t, 1.4); });
     this.dBus.gain.setTargetAtTime(lvl * .5, t, 1.5);
     this.dLP.frequency.setTargetAtTime(cut, t, 1);
   },
@@ -321,6 +321,7 @@ const S = {
   },
   note(f, o = {}) {
     const c = this.c; if (!c || !this.on || this.n > this.max || !(f > 0)) return;
+    f *= KEYSHIFT;
     const t = c.currentTime + this.la + (o.at || 0), a = o.a || .005, d = o.d || 1.6, v = o.g || .12;
     const os = c.createOscillator(); os.type = o.type || 'sine';
     if (o.glide) { os.frequency.setValueAtTime(f * o.glide, t); os.frequency.exponentialRampToValueAtTime(f, t + .09); } else os.frequency.value = f;
@@ -365,7 +366,7 @@ const S = {
     o.start(); o2.start(); gn.gain.setTargetAtTime(level, c.currentTime, .06);
     let dead = false;
     return {
-      set(fr) { if (dead) return; const t = c.currentTime; o.frequency.setTargetAtTime(fr, t, .05); o2.frequency.setTargetAtTime(fr * 2.004, t, .05); },
+      set(fr) { if (dead) return; const t = c.currentTime; o.frequency.setTargetAtTime(fr * KEYSHIFT, t, .05); o2.frequency.setTargetAtTime(fr * KEYSHIFT * 2.004, t, .05); },
       level(v) { if (!dead) gn.gain.setTargetAtTime(v, c.currentTime, .25); },
       end() { if (dead) return; dead = true; const t = c.currentTime; gn.gain.setTargetAtTime(0, t, .15); o.stop(t + 1); o2.stop(t + 1); }
     };
@@ -374,7 +375,7 @@ const S = {
     const c = this.c; if (!c || !list.length) return { stop() {} };
     const bus = c.createGain(); bus.gain.value = 0; bus.connect(this.dry);
     const ws = c.createGain(); ws.gain.value = .6; bus.connect(ws); ws.connect(this.wet);
-    const os = list.map(({ f, g: v, pan }) => { const o = c.createOscillator(); o.frequency.value = f; const gn = c.createGain(); gn.gain.value = v; o.connect(gn); this.pan(gn, pan || 0).connect(bus); o.start(); return o; });
+    const os = list.map(({ f, g: v, pan }) => { const o = c.createOscillator(); o.frequency.value = f * KEYSHIFT; const gn = c.createGain(); gn.gain.value = v; o.connect(gn); this.pan(gn, pan || 0).connect(bus); o.start(); return o; });
     bus.gain.setTargetAtTime(1, c.currentTime, .8);
     return { stop() { const t = c.currentTime; bus.gain.setTargetAtTime(0, t, .4); os.forEach(o => o.stop(t + 2.5)); } };
   },
@@ -397,7 +398,7 @@ addEventListener('deviceorientation', e => {
   if (fd && !FACE.down) { FACE.down = true; FACE.t = T; if (started) S.note(mtof(81), { g: .03, a: 1.2, d: 3 }); }
   else if (!fd && FACE.down && Math.abs(e.beta) < 120) {
     FACE.down = false;
-    if (started && T - FACE.t > .7) { go(randomOther()); [0, 4, 7].forEach((k, i) => S.note(scaleNote(62, k), { g: .045, d: 3, at: i * .12 })); }
+    if (started && T - FACE.t > .7) { if (typeof allDoable3 === 'function' && allDoable3() && !SESSION.hg && curI !== HOURG) { SESSION.hg = true; go(HOURG); } else go(randomOther()); [0, 4, 7].forEach((k, i) => S.note(scaleNote(62, k), { g: .045, d: 3, at: i * .12 })); }
   }
 });
 const FACE = { down: false, t: 0 };
@@ -1360,9 +1361,10 @@ function Absence() {
     // the ledger: one gold star for each thing ever found, one pale star for each wish
     // the secrets you can find by doing something sit on a hidden constellation; the rest are scattered
     Object.keys(MEM.found).forEach((id, i) => {
-      const di = DOABLE.indexOf(id), dk = DOABLE2.indexOf(id); let x, y;
+      const di = DOABLE.indexOf(id), dk = DOABLE2.indexOf(id), dh = DOABLE3.indexOf(id); let x, y;
       if (di >= 0) [x, y] = eyePt(di);
       else if (dk >= 0) [x, y] = keyPt(dk);
+      else if (dh >= 0) [x, y] = hourPt(dh);
       else { let hs = 7; for (const ch of id) hs = (hs * 31 + ch.charCodeAt(0)) | 0; const r = rng(hs); x = (.05 + r() * .9) * W; y = (.33 + r() * .24) * H; }
       const a = (.6 + .4 * Math.sin(T * 1.3 + i)) * Math.max(.35, night);
       g.fillStyle = `rgba(255,207,107,${a * .22})`; g.beginPath(); g.arc(x, y, 6, 0, TAU); g.fill();
@@ -1380,6 +1382,12 @@ function Absence() {
       for (const [a, b] of KEY_LINES) { const p = keyPt(a), q = keyPt(b); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); }
       g.stroke();
       if (!MEM.found.key) found('key');
+    }
+    if (allDoable3()) {   // and the hourglass
+      g.strokeStyle = `rgba(255,207,107,${.35 * Math.max(.4, night)})`; g.lineWidth = 1; g.beginPath();
+      for (const [a, b] of HG_LINES) { const p = hourPt(a), q = hourPt(b); g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]); }
+      g.stroke();
+      if (!MEM.found.glass) found('glass');
     }
     const rw = rng(4242);
     for (let i = 0; i < Math.min(MEM.wishes, 60); i++) {
@@ -2028,7 +2036,7 @@ const KEYS = { shift: false };
 // and a few live signals from the planet. Every source is optional: if
 // it is missing, slow or offline, nothing happens and the piece goes on.
 // ======================================================================
-const VERSION = 4;
+const VERSION = 5;
 const DESK = (() => { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { return false; } })();
 
 // --- what the timezone says about where you are: [country, lat, lon, region] ---
@@ -2372,7 +2380,7 @@ function worldFX(dt) {
   }
   // exactly midnight: for one minute everything is inside out
   const mid = CLK.h === 0 && CLK.m === 0;
-  if (mid !== FX.mid) { FX.mid = mid; cv.style.filter = mid ? 'invert(1) hue-rotate(180deg)' : ''; if (mid) { found('midnight'); S.bell(mtof(45), 0, 1); } }
+  if (mid !== FX.mid) { FX.mid = mid; if (mid) { found('midnight'); S.bell(mtof(45), 0, 1); } }
   // two minutes of silence on remembrance days
   S.hush(THEME.kind === 'poppies' && CLK.h === 11 && CLK.m < 2);
 }
@@ -3273,6 +3281,1104 @@ function Frost() {
 }
 
 // ======================================================================
+// shared pieces for the later movements
+// ======================================================================
+const SPR = {};
+// a soft round glow in one colour, drawn once and reused
+function sprite(rgb, size = 64) {
+  const k = rgb + '/' + size; if (SPR[k]) return SPR[k];
+  const c = mk(size, size), x = c.getContext('2d'), h = size / 2, gr = x.createRadialGradient(h, h, 0, h, h, h);
+  gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(.2, `rgba(${rgb},.5)`); gr.addColorStop(1, `rgba(${rgb},0)`);
+  x.fillStyle = gr; x.fillRect(0, 0, size, size); return SPR[k] = c;
+}
+// smooth value noise in [0,1], several octaves, from a seeded random source
+function valueNoise(R, cells = 6) {
+  const n = 64, v = new Float32Array(n * n); for (let i = 0; i < v.length; i++) v[i] = R();
+  const at = (x, y) => v[((y % n + n) % n) * n + ((x % n + n) % n)];
+  const sm = t => t * t * (3 - 2 * t);
+  const one = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), xf = sm(x - xi), yf = sm(y - yi); return lerp(lerp(at(xi, yi), at(xi + 1, yi), xf), lerp(at(xi, yi + 1), at(xi + 1, yi + 1), xf), yf); };
+  return (u, w) => { let s = 0, a = .5, f = cells, tot = 0; for (let o = 0; o < 5; o++) { s += one(u * f + o * 17, w * f + o * 31) * a; tot += a; a *= .5; f *= 2; } return s / tot; };
+}
+const seedNow = k => rng((MEM.visits * k + Date.now()) | 0);
+
+// ======================================================================
+// XXV. FIREFLIES — each one flashes on its own clock, and nudges the
+//      clocks of the ones nearby when it does. Slowly the field learns
+//      to flash as one. Flash with them.
+// ======================================================================
+function Fireflies() {
+  const R = seedNow(7919), N = DESK ? 200 : 140, rgb = R() < .5 ? '200,255,120' : '255,214,110', eps = .05 + R() * .03;
+  let F = [], ord = 0, lastBig = -9, period = 1.8, lastTick = 0, streak = 0, grass = null, spr = null;
+  function init() {
+    F = []; for (let i = 0; i < N; i++) F.push({ x: R() * W, y: H * (.12 + R() * .8), vx: 0, vy: 0, ph: R(), w: .5 + R() * .09, f: 0, ft: -9 });
+    spr = sprite(rgb, 48);
+    grass = mk(W, H * .22); const x = grass.getContext('2d'); x.strokeStyle = 'rgba(14,20,16,1)'; x.lineWidth = 1.4;
+    for (let i = 0; i < W / 2; i++) { const bx = R() * W, h = grass.height * (.3 + R() * .7); x.beginPath(); x.moveTo(bx, grass.height); x.quadraticCurveTo(bx + (R() - .5) * 20, grass.height - h * .6, bx + (R() - .5) * 30, grass.height - h); x.stroke(); }
+  }
+  // pulse coupling: a flash pushes the neighbours' clocks forward; any pushed past one flash too, at once
+  function flash(list) {
+    const r2 = (Math.min(W, H) * .3) ** 2, q = list.slice(); let n = 0;
+    for (const a of q) a.ft = T;
+    while (q.length) {
+      const a = q.pop(); a.ph = 0; a.f = 1; n++;
+      for (const b of F) {
+        if (b.ft === T) continue;
+        const dx = b.x - a.x, dy = b.y - a.y; if (dx * dx + dy * dy > r2) continue;
+        b.ph = Math.min(1, b.ph + eps * (1 + b.ph)); if (b.ph >= 1) { b.ft = T; q.push(b); }
+      }
+    }
+    return n;
+  }
+  return {
+    dur: 80, hiddenTitle: 'they are falling into step',
+    enter() { init(); g.fillStyle = '#030406'; g.fillRect(0, 0, W, H); S.drone([mtof(36), mtof(43), mtof(48), mtof(55)], .14, 380); },
+    resize() { init(); },
+    down(p) {   // light scatters them: the ones near your finger lose count
+      for (const a of F) { const d = Math.hypot(a.x - p.x, a.y - p.y); if (d < 120) { a.ph = Math.random(); a.vx += (a.x - p.x) / (d + 1) * 60; a.vy += (a.y - p.y) / (d + 1) * 60; } }
+    },
+    up(p) {
+      if (p.moved > 14) return;
+      // you flash too; in time with them, and they let you lead
+      const off = Math.min(Math.abs(T - lastBig), Math.abs(T - (lastBig + period)));
+      if (ord > .75 && off < .2) { streak++; S.note(scaleNote(64, streak + 2), { g: .05, d: 1.6 }); buzz(8); } else streak = 0;
+      if (streak >= 4 && found('sync')) { [0, 2, 4, 7].forEach((k, i) => S.note(scaleNote(64, k + 5), { g: .04, d: 3, at: i * .1 })); }
+      const near = F.filter(a => Math.hypot(a.x - p.x, a.y - p.y) < Math.min(W, H) * .3); for (const a of near) a.ph = Math.min(.99, a.ph + .2);
+    },
+    shake() { for (const a of F) { a.ph = Math.random(); a.vx += rand(-80, 80); a.vy += rand(-80, 80); } S.noise({ dur: .3, f: 4000, g: .03 }); },
+    frame(dt) {
+      const due = [];
+      for (const a of F) {
+        a.ph += a.w * dt; if (a.ph >= 1) due.push(a);
+        a.f = Math.max(0, a.f - dt * 2.6);
+        a.vx += (Math.random() - .5) * 30 * dt + TILT.rx * 8 * dt; a.vy += (Math.random() - .5) * 30 * dt + TILT.ry * 8 * dt;
+        a.vx *= .97; a.vy *= .97; a.x += a.vx * dt; a.y += a.vy * dt;
+        if (a.x < 0) a.x += W; else if (a.x > W) a.x -= W; a.y = reflect(a.y, H * .08, H * .95);
+      }
+      const n = due.length ? flash(due) : 0;
+      let cx = 0, cy = 0; for (const a of F) { cx += Math.cos(a.ph * TAU); cy += Math.sin(a.ph * TAU); }
+      ord = lerp(ord, Math.hypot(cx, cy) / N, .05);
+      if (n > N * .45) {
+        if (lastBig > 0 && T - lastBig > 1 && T - lastBig < 3) period = lerp(period, T - lastBig, .5);
+        lastBig = T; buzz(6);
+        [0, 4, 7].forEach((k, i) => S.note(scaleNote(57, k + (ord > .9 ? 5 : 0)), { g: .035, d: 2.4, at: i * .02, wet: .8 }));
+      } else if (n && T - lastTick > .06) { lastTick = T; S.note(rand(2600, 4200), { g: .006, d: .12, wet: .9 }); }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = 'rgba(3,4,6,.45)'; g.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'lighter';
+      for (const a of F) {
+        g.globalAlpha = .12; g.fillStyle = `rgb(${rgb})`; g.fillRect(a.x - .7, a.y - .7, 1.4, 1.4);
+        if (a.f > .02) { g.globalAlpha = a.f; const s = 26 + a.f * 10; g.drawImage(spr, a.x - s / 2, a.y - s / 2, s, s); }
+      }
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+      g.drawImage(grass, 0, H - grass.height);
+    }
+  };
+}
+
+// ======================================================================
+// XXVI. MOULD — thousands of blind walkers, each only following the
+//       scent of the others. Give them food and they build a network
+//       between it, the way a slime mould maps the shortest roads.
+// ======================================================================
+function Mould() {
+  const R = seedNow(4801);
+  const SA = (22 + R() * 25) * RAD, RA = (25 + R() * 25) * RAD, SO = 6 + R() * 5;
+  const tint = [[255, 214, 90], [190, 255, 140], [140, 220, 255], [255, 150, 110]][R() * 4 | 0];
+  let cs, gw, gh, tr, tmp, ag, na, cvs, cx2, img, food = [], lastChk = 0, lastN = 0;
+  function init() {
+    cs = DESK ? 4 : 3; gw = Math.ceil(W / cs); gh = Math.ceil(H / cs);
+    tr = new Float32Array(gw * gh); tmp = new Float32Array(gw * gh);
+    na = Math.round(clamp(gw * gh * .2, 1800, DESK ? 9000 : 6000) * Math.max(.5, QUAL));
+    ag = new Float32Array(na * 3);
+    for (let i = 0; i < na; i++) { const a = R() * TAU, r = R() * Math.min(gw, gh) * .25; ag[i * 3] = gw / 2 + Math.cos(a) * r; ag[i * 3 + 1] = gh / 2 + Math.sin(a) * r; ag[i * 3 + 2] = R() * TAU; }
+    cvs = mk(gw, gh); cx2 = cvs.getContext('2d'); img = cx2.createImageData(gw, gh); food = [];
+  }
+  const sense = (x, y, a) => { let sx = (x + Math.cos(a) * SO) | 0, sy = (y + Math.sin(a) * SO) | 0; sx = (sx + gw) % gw; sy = (sy + gh) % gh; return tr[sy * gw + sx]; };
+  function linked(a, b) {   // is there a trail all the way from one food to the next?
+    let ok = 0;
+    for (let k = 1; k < 12; k++) {
+      const x = lerp(a.x, b.x, k / 12), y = lerp(a.y, b.y, k / 12); let m = 0;
+      for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const X = (x | 0) + dx, Y = (y | 0) + dy; if (X >= 0 && Y >= 0 && X < gw && Y < gh) m = Math.max(m, tr[Y * gw + X]); }
+      if (m > 3) ok++;
+    }
+    return ok >= 9;
+  }
+  return {
+    dur: 80, hiddenTitle: 'it is finding the shortest way',
+    enter() { init(); S.drone([mtof(33), mtof(40), mtof(45), mtof(52)], .16, 420); },
+    resize() { init(); },
+    up(p) {
+      if (p.moved > 12) return;
+      food.push({ x: p.x / cs, y: p.y / cs, t: T }); if (food.length > 5) food.shift();
+      S.note(scaleNote(45, food.length * 2), { g: .07, d: 1.8, type: 'triangle' }); buzz(10);
+    },
+    move(p) { const x = p.x / cs | 0, y = p.y / cs | 0; for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < gw && Y < gh) tr[Y * gw + X] *= .3; } },
+    dbl() { food = []; S.note(mtof(40), { g: .05, d: 1, glide: 1.3 }); },
+    shake() { init(); S.noise({ dur: .5, f: 600, g: .05 }); },
+    frame(dt) {
+      const steps = DESK ? 2 : 1;
+      for (let s = 0; s < steps; s++) {
+        for (let i = 0; i < na; i++) {
+          const o = i * 3; let x = ag[o], y = ag[o + 1], a = ag[o + 2];
+          const f = sense(x, y, a), l = sense(x, y, a - SA), r = sense(x, y, a + SA);
+          if (f < l && f < r) a += (Math.random() < .5 ? -1 : 1) * RA; else if (l > r) a -= RA * Math.random(); else if (r > l) a += RA * Math.random();
+          x += Math.cos(a); y += Math.sin(a);
+          if (x < 0) x += gw; else if (x >= gw) x -= gw; if (y < 0) y += gh; else if (y >= gh) y -= gh;
+          ag[o] = x; ag[o + 1] = y; ag[o + 2] = a; tr[(y | 0) * gw + (x | 0)] += 1;
+        }
+        for (const fd of food) { const fx = fd.x | 0, fy = fd.y | 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const X = fx + dx, Y = fy + dy; if (X >= 0 && Y >= 0 && X < gw && Y < gh) tr[Y * gw + X] += 6; } }
+        // spread and fade
+        for (let y = 0; y < gh; y++) {
+          const ym = ((y - 1 + gh) % gh) * gw, y0 = y * gw, yp = ((y + 1) % gh) * gw;
+          for (let x = 0; x < gw; x++) {
+            const xm = (x - 1 + gw) % gw, xp = (x + 1) % gw;
+            tmp[y0 + x] = (tr[ym + xm] + tr[ym + x] + tr[ym + xp] + tr[y0 + xm] + tr[y0 + x] + tr[y0 + xp] + tr[yp + xm] + tr[yp + x] + tr[yp + xp]) / 9 * .9;
+          }
+        }
+        const k = tr; tr = tmp; tmp = k;
+      }
+      const D = img.data, [r0, g0, b0] = tint;
+      for (let i = 0, n = gw * gh; i < n; i++) { const v = Math.min(1, tr[i] / 7), e = Math.sqrt(v), o = i * 4; D[o] = 5 + r0 * e; D[o + 1] = 4 + g0 * e; D[o + 2] = 7 + b0 * e * .9; D[o + 3] = 255; }
+      cx2.putImageData(img, 0, 0);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.drawImage(cvs, 0, 0, gw * cs, gh * cs);
+      for (const fd of food) { const pulse = .6 + .4 * Math.sin(T * 3 + fd.t); g.fillStyle = `rgba(255,236,200,${pulse})`; g.beginPath(); g.arc(fd.x * cs, fd.y * cs, 4, 0, TAU); g.fill(); }
+      if (T - lastN > .7) { lastN = T; let m = 0; for (const fd of food) m += tr[(fd.y | 0) * gw + (fd.x | 0)] || 0; if (food.length) S.note(scaleNote(57, Math.round(m / food.length) % 10), { g: .015, d: 1.4, wet: .8 }); }
+      if (T - lastChk > 1 && food.length >= 3) {
+        lastChk = T;
+        const fs = food.slice(-3);
+        if (linked(fs[0], fs[1]) && linked(fs[1], fs[2]) && found('network')) { S.bell(mtof(57), 0, .8); buzz([10, 30, 10]); }
+      }
+    }
+  };
+}
+
+// ======================================================================
+// XXVII. RIPPLE — a still pool. Every touch is a stone. Hold, and your
+//        finger beats on the water; plant two beating sources and their
+//        waves cross, cancel and build.
+// ======================================================================
+function Ripple() {
+  const R = seedNow(3571), deep = [[8, 22, 40], [10, 30, 34], [24, 14, 36]][R() * 3 | 0];
+  let cs, gw, gh, u, v, cvs, cx2, img, src = [], held = null, both = 0, lastDrop = 0;
+  function init() {
+    cs = DESK ? 5 : 4; gw = Math.ceil(W / cs) + 2; gh = Math.ceil(H / cs) + 2;
+    u = new Float32Array(gw * gh); v = new Float32Array(gw * gh);
+    cvs = mk(gw, gh); cx2 = cvs.getContext('2d'); img = cx2.createImageData(gw, gh); src = [];
+  }
+  function drop(x, y, a) { const X = clamp(x / cs | 0, 2, gw - 3), Y = clamp(y / cs | 0, 2, gh - 3); for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) u[(Y + dy) * gw + X + dx] += a; }
+  return {
+    dur: 70, hiddenTitle: 'the water is still moving',
+    enter() { init(); S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .14, 500); },
+    resize() { init(); },
+    down(p) { held = { p, t: T }; },
+    up(p) {
+      if (held && held.p === p) held = null;
+      if (p.moved > 14 || T - p.t0 > .45) return;
+      drop(p.x, p.y, 380); S.note(scaleNote(62, Math.round((1 - p.y / H) * 10)), { g: .06, d: 1.2, glide: 1.2, pan: p.x / W * 2 - 1 }); buzz(6);
+    },
+    move(p) { if (T - lastDrop > .03) { lastDrop = T; drop(p.x, p.y, 60); } },
+    dbl(p) {   // a source that keeps beating
+      src.push({ x: p.x, y: p.y, f: 1.4 + src.length * .21, ph: 0 }); if (src.length > 3) src.shift();
+      S.bell(scaleNote(57, src.length * 2), 0, .5);
+    },
+    shake() { u.fill(0); v.fill(0); src = []; S.noise({ dur: .6, f: 700, g: .06 }); },
+    frame(dt) {
+      const wx = LIVE.wx; if (wx && wx.rain && Math.random() < dt * 6 * wx.rain) drop(rand(0, W), rand(0, H), 120);
+      if (Math.random() < dt * .3) drop(rand(0, W), rand(0, H), 90);
+      const beating = src.length + (held && T - held.t > .5 ? 1 : 0);
+      both = beating >= 2 ? both + dt : 0;
+      if (both > 6 && found('interference')) { S.bell(mtof(50), 0, .8); buzz([10, 20, 10]); }
+      for (let s = 0; s < 2; s++) {
+        for (const q of src) { q.ph += dt * q.f * Math.PI; drop(q.x, q.y, Math.sin(q.ph * 2) * 26); }
+        if (held && T - held.t > .5) drop(held.p.x, held.p.y, Math.sin(T * 9) * 24);
+        for (let y = 1; y < gh - 1; y++) {
+          const r = y * gw;
+          for (let x = 1; x < gw - 1; x++) { const i = r + x; v[i] = ((u[i - 1] + u[i + 1] + u[i - gw] + u[i + gw]) * .5 - v[i]) * .985; }
+        }
+        const k = u; u = v; v = k;
+      }
+      const D = img.data, [r0, g0, b0] = deep;
+      for (let y = 1; y < gh - 1; y++) for (let x = 1; x < gw - 1; x++) {
+        const i = y * gw + x, sx = u[i - 1] - u[i + 1], sy = u[i - gw] - u[i + gw], l = clamp((sx + sy) * .012, -1, 1), o = i * 4;
+        const hi = l > 0 ? l * l * 255 : 0;
+        D[o] = clamp(r0 + l * 30 + hi, 0, 255); D[o + 1] = clamp(g0 + l * 45 + hi, 0, 255); D[o + 2] = clamp(b0 + l * 60 + hi, 0, 255); D[o + 3] = 255;
+      }
+      cx2.putImageData(img, 0, 0);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.drawImage(cvs, 1, 1, gw - 2, gh - 2, 0, 0, (gw - 2) * cs, (gh - 2) * cs);
+      for (const q of src) { g.strokeStyle = `rgba(236,228,214,${.25 + .2 * Math.sin(q.ph * 2)})`; g.lineWidth = 1; g.beginPath(); g.arc(q.x, q.y, 5, 0, TAU); g.stroke(); }
+    }
+  };
+}
+
+// ======================================================================
+// XXVIII. STAIRCASE — a scale that rises for ever and never gets any
+//         higher (a Shepard tone), down a stair that never ends.
+//         Drag up to climb, down to descend.
+// ======================================================================
+function Staircase() {
+  const R = seedNow(2203), hue = R() * 360;
+  let pos = 0, vel = .7, last = 0, dir = 0, run = 0, spin = R() * TAU;
+  function shepard(s) {
+    const k12 = ((s % 12) + 12) % 12;
+    for (let o = 0; o < 7; o++) {
+      const x = o + k12 / 12, amp = Math.exp(-((x - 3.6) ** 2) / (2 * 1.25 * 1.25));
+      if (amp > .04) S.note(32.7 * Math.pow(2, x), { g: .045 * amp, d: 1.1, a: .01, wet: .6 });
+    }
+  }
+  return {
+    dur: 60, hiddenTitle: 'it is still going down',
+    enter() { S.drone([mtof(36), mtof(43)], .1, 400); last = Math.floor(pos); },
+    move(p) { vel = clamp(vel - p.dy * .06, -9, 9); },
+    wheel(d) { vel = clamp(vel - d * .02, -9, 9); },
+    shake() { vel = -vel * 2; },
+    frame(dt) {
+      if (!P.size) vel = lerp(vel, vel >= 0 ? .7 : -.7, dt * .5);
+      pos += vel * dt;
+      const s = Math.floor(pos);
+      if (s !== last) {
+        const d = Math.sign(s - last); last = s;
+        if (d === dir) run++; else { dir = d; run = 1; }
+        shepard(s); if (Math.abs(vel) < 3) buzz(4);
+        if (run >= 24 && found('endless')) S.bell(mtof(60), 0, .6);
+      }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      const cx = W / 2, cy = H / 2, M = Math.max(W, H) * .9, frac = pos - Math.floor(pos);
+      // twelve steps to a turn, and each turn is half as wide: forever inward
+      for (let i = 60; i >= -12; i--) {
+        const k = i - frac, r0 = M * Math.pow(2, -k / 12), r1 = r0 * .5;
+        if (r0 < 2) continue;
+        const a0 = spin + k * TAU / 12, a1 = a0 + TAU / 12 * .94;
+        const step = ((Math.floor(pos) + i) % 12 + 12) % 12, l = 18 + (step / 12) * 46;
+        g.fillStyle = `hsl(${(hue + step * 4) % 360},${22 + step * 2}%,${l}%)`;
+        g.beginPath(); g.arc(cx, cy, r0, a0, a1); g.arc(cx, cy, r1, a1, a0, true); g.closePath(); g.fill();
+        g.strokeStyle = 'rgba(5,4,7,.6)'; g.lineWidth = 1; g.stroke();
+      }
+      const wr = Math.min(W, H) * .36, wa = spin + (16 - frac) * TAU / 12 + TAU / 24;
+      g.fillStyle = '#f3ebdf'; g.beginPath(); g.arc(cx + Math.cos(wa) * wr, cy + Math.sin(wa) * wr, 3.2 + Math.abs(Math.sin(pos * Math.PI)) * 1.2, 0, TAU); g.fill();
+    }
+  };
+}
+
+// ======================================================================
+// XXIX. PENROSE — two shapes of tile that cover the floor for ever and
+//       never repeat. It keeps dividing. Touch a tile and every tile
+//       turned the same way answers.
+// ======================================================================
+function Penrose() {
+  const PHI = (1 + Math.sqrt(5)) / 2, R = seedNow(1597), maxL = DESK ? 7 : 6;
+  const pal = R() < .5 ? [[255, 150, 110], [236, 228, 214]] : [[130, 180, 255], [255, 207, 107]];
+  let tris = [], level = 2, levT = 0, lit = new Set(), flash = new Array(10).fill(0), rot = R() * TAU, zoom = 1, zt = 1;
+  function build(n) {
+    let t = [];
+    for (let i = 0; i < 10; i++) {
+      let B = [Math.cos((2 * i - 1) * Math.PI / 10), Math.sin((2 * i - 1) * Math.PI / 10)], C = [Math.cos((2 * i + 1) * Math.PI / 10), Math.sin((2 * i + 1) * Math.PI / 10)];
+      if (i % 2 === 0) [B, C] = [C, B];
+      t.push([0, [0, 0], B, C]);
+    }
+    for (let k = 0; k < n; k++) {
+      const o = [];
+      for (const [c, A, B, C] of t) {
+        if (c === 0) { const P = [A[0] + (B[0] - A[0]) / PHI, A[1] + (B[1] - A[1]) / PHI]; o.push([0, C, P, B], [1, P, C, A]); }
+        else {
+          const Q = [B[0] + (A[0] - B[0]) / PHI, B[1] + (A[1] - B[1]) / PHI], Rr = [B[0] + (C[0] - B[0]) / PHI, B[1] + (C[1] - B[1]) / PHI];
+          o.push([1, Rr, C, A], [1, Q, Rr, B], [0, Rr, Q, A]);
+        }
+      }
+      t = o;
+    }
+    // each tile's class: its shape and which of five ways it is turned
+    return t.map(([c, A, B, C]) => { let a = Math.atan2(C[1] - B[1], C[0] - B[0]); a = ((a % Math.PI) + Math.PI) % Math.PI; return [c, A, B, C, c * 5 + (Math.round(a / (Math.PI / 5)) % 5)]; });
+  }
+  const sc = () => Math.max(W, H) * .62 * zoom;
+  const tp = (q) => { const s = sc(), c = Math.cos(rot), n = Math.sin(rot); return [W / 2 + (q[0] * c - q[1] * n) * s, H / 2 + (q[0] * n + q[1] * c) * s]; };
+  function hit(x, y) {
+    const s = sc(), c = Math.cos(-rot), n = Math.sin(-rot), px = (x - W / 2) / s, py = (y - H / 2) / s, X = px * c - py * n, Y = px * n + py * c;
+    for (const t of tris) {
+      const [, A, B, C] = t, d1 = (X - B[0]) * (A[1] - B[1]) - (A[0] - B[0]) * (Y - B[1]), d2 = (X - C[0]) * (B[1] - C[1]) - (B[0] - C[0]) * (Y - C[1]), d3 = (X - A[0]) * (C[1] - A[1]) - (C[0] - A[0]) * (Y - A[1]);
+      if (!((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) return t[4];
+    }
+    return -1;
+  }
+  return {
+    dur: 75, hiddenTitle: 'it is still not repeating',
+    enter() { tris = build(level); S.drone([mtof(40), mtof(47), mtof(52), mtof(59)], .15, 600); },
+    up(p) {
+      if (p.moved > 12) return;
+      const k = hit(p.x, p.y); if (k < 0) return;
+      flash[k] = 1; lit.add(k); S.bell(scaleNote(52, k), 0, .45); buzz(8);
+      if (lit.size === 10 && found('aperiodic')) [0, 2, 4, 5, 7].forEach((q, i) => S.note(scaleNote(64, q), { g: .04, d: 3, at: i * .12 }));
+    },
+    dbl() { zt = zt > 3 ? 1 : zt * PHI; },
+    wheel(d) { zt = clamp(zt * Math.exp(-d * .002), .7, 6); },
+    shake() { rot = Math.random() * TAU; lit.clear(); S.noise({ dur: .4, f: 2000, g: .04 }); },
+    frame(dt) {
+      levT += dt; if (levT > 5 && level < maxL) { levT = 0; level++; tris = build(level); S.note(scaleNote(52, level * 2), { g: .04, d: 2.5 }); }
+      zoom = lerp(zoom, zt, dt * 1.5); rot += dt * .01 + TILT.rx * dt * .05;
+      for (let k = 0; k < 10; k++) flash[k] = Math.max(0, flash[k] - dt * .8);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      const paths = [...Array(10)].map(() => new Path2D()), edges = new Path2D();
+      for (const t of tris) {
+        const a = tp(t[1]), b = tp(t[2]), c = tp(t[3]);
+        if ((a[0] < -50 && b[0] < -50 && c[0] < -50) || (a[0] > W + 50 && b[0] > W + 50 && c[0] > W + 50) || (a[1] < -50 && b[1] < -50 && c[1] < -50) || (a[1] > H + 50 && b[1] > H + 50 && c[1] > H + 50)) continue;
+        const pth = paths[t[4]]; pth.moveTo(a[0], a[1]); pth.lineTo(b[0], b[1]); pth.lineTo(c[0], c[1]); pth.closePath();
+        edges.moveTo(c[0], c[1]); edges.lineTo(a[0], a[1]); edges.lineTo(b[0], b[1]);
+      }
+      for (let k = 0; k < 10; k++) {
+        const [r, gg, b] = pal[k < 5 ? 0 : 1], on = lit.has(k) ? .22 : .06, f = flash[k];
+        g.fillStyle = `rgba(${r},${gg},${b},${on + f * .5 + .03 * Math.sin(T * .7 + k)})`; g.fill(paths[k]);
+      }
+      g.strokeStyle = 'rgba(236,228,214,.28)'; g.lineWidth = 1; g.stroke(edges);
+    }
+  };
+}
+
+// ======================================================================
+// XXX. SWING — a pendulum hung from a pendulum, and its ghost, one
+//      billionth of a degree apart. Drag it anywhere and let go. Can
+//      you make it stand on its head?
+// ======================================================================
+function Swing() {
+  const Gr = 9.81;
+  let s = [2.2, 2.6, 0, 0], gh = [2.2 + 1e-9, 2.6, 0, 0], drag = null, trail = [], gtrail = [], upT = 0, split = false, lastSide = 0, lastN = 0, elbow = 1;
+  function acc(t1, t2, w1, w2) {
+    const d = t1 - t2, den = 3 - Math.cos(2 * d);
+    const a1 = (-3 * Gr * Math.sin(t1) - Gr * Math.sin(t1 - 2 * t2) - 2 * Math.sin(d) * (w2 * w2 + w1 * w1 * Math.cos(d))) / den;
+    const a2 = (2 * Math.sin(d) * (w1 * w1 * 2 + Gr * 2 * Math.cos(t1) + w2 * w2 * Math.cos(d))) / den;
+    return [a1, a2];
+  }
+  function rk(st, h) {
+    const f = q => { const [a1, a2] = acc(q[0], q[1], q[2], q[3]); return [q[2], q[3], a1, a2]; };
+    const k1 = f(st), k2 = f(st.map((v, i) => v + k1[i] * h / 2)), k3 = f(st.map((v, i) => v + k2[i] * h / 2)), k4 = f(st.map((v, i) => v + k3[i] * h));
+    for (let i = 0; i < 4; i++) st[i] += h / 6 * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]);
+    st[2] *= .99985; st[3] *= .99985;
+  }
+  const geo = () => ({ ox: W / 2, oy: H * .42, L: Math.min(W, H) * .21 });
+  const pts = (st, G) => { const x1 = G.ox + Math.sin(st[0]) * G.L, y1 = G.oy + Math.cos(st[0]) * G.L; return [x1, y1, x1 + Math.sin(st[1]) * G.L, y1 + Math.cos(st[1]) * G.L]; };
+  function reach(p) {   // put the lower bob under the finger (two-joint arm)
+    const G = geo(), dx = p.x - G.ox, dy = p.y - G.oy, d = clamp(Math.hypot(dx, dy), 1, G.L * 2 - .01);
+    const base = Math.atan2(dx, dy), k = Math.acos(clamp(d / (2 * G.L), -1, 1));
+    s = [base + k * elbow, base - k * elbow, 0, 0]; gh = [s[0] + 1e-9, s[1], 0, 0]; split = false; trail = []; gtrail = [];
+  }
+  return {
+    dur: 70, hiddenTitle: 'it is still swinging',
+    enter() { S.drone([mtof(41), mtof(48), mtof(53), mtof(60)], .12, 600); },
+    down(p) { elbow = p.x < W / 2 ? 1 : -1; drag = p; reach(p); },
+    move(p) { if (drag === p) reach(p); },
+    up(p) { if (drag === p) drag = null; },
+    dbl() { s[2] += rand(-6, 6); s[3] += rand(-6, 6); gh[2] = s[2]; gh[3] = s[3]; },
+    shake(k) { s[2] += rand(-4, 4) * k; s[3] += rand(-4, 4) * k; gh = [s[0] + 1e-9, s[1], s[2], s[3]]; split = false; },
+    frame(dt) {
+      const G = geo();
+      if (!drag) for (let i = 0; i < 10; i++) { rk(s, dt / 10); rk(gh, dt / 10); }
+      const [x1, y1, x2, y2] = pts(s, G), [, , gx2, gy2] = pts(gh, G);
+      trail.push([x2, y2]); gtrail.push([gx2, gy2]); if (trail.length > 160) { trail.shift(); gtrail.shift(); }
+      if (!split && Math.hypot(x2 - gx2, y2 - gy2) > G.L * .5) { split = true; S.bell(mtof(53), 0, .5); }
+      const side = Math.sign(Math.sin(s[1]));
+      if (!drag && side !== lastSide && T - lastN > .12) { lastN = T; const sp = Math.abs(s[3]); S.note(scaleNote(53, Math.min(14, Math.round(sp * 1.2))), { g: .035, d: 1.2, pan: (x2 / W) * 2 - 1 }); if (sp > 6) buzz(5); }
+      lastSide = side;
+      upT = !drag && y1 < G.oy - G.L * .2 && y2 < y1 ? upT + dt : 0;
+      if (upT > 2 && found('upright')) { [0, 4, 7, 12].forEach((k, i) => S.note(scaleNote(53, k + 3), { g: .05, d: 3, at: i * .1 })); buzz([10, 30, 10]); }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      g.lineWidth = 1.5; g.lineCap = 'round';
+      for (const [tr, col] of [[gtrail, '120,140,200'], [trail, '255,150,110']]) {
+        for (let i = 1; i < tr.length; i++) { g.strokeStyle = `rgba(${col},${i / tr.length * .6})`; g.beginPath(); g.moveTo(tr[i - 1][0], tr[i - 1][1]); g.lineTo(tr[i][0], tr[i][1]); g.stroke(); }
+      }
+      if (split) { const [gx1, gy1] = pts(gh, G); g.strokeStyle = 'rgba(120,140,200,.35)'; g.beginPath(); g.moveTo(G.ox, G.oy); g.lineTo(gx1, gy1); g.lineTo(gx2, gy2); g.stroke(); }
+      g.strokeStyle = 'rgba(236,228,214,.7)'; g.beginPath(); g.moveTo(G.ox, G.oy); g.lineTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+      g.fillStyle = '#ece4d6'; g.beginPath(); g.arc(G.ox, G.oy, 3, 0, TAU); g.fill();
+      g.beginPath(); g.arc(x1, y1, 6, 0, TAU); g.fill();
+      g.fillStyle = upT > 0 ? '#ffcf6b' : '#ff6a4d'; g.beginPath(); g.arc(x2, y2, 8, 0, TAU); g.fill();
+    }
+  };
+}
+
+// ======================================================================
+// XXXI. GLASS — rain on a window at night, the city blurred behind it.
+//       Wipe the mist away with your finger; it comes back. The drops
+//       gather, grow heavy and run.
+// ======================================================================
+function Glass() {
+  const R = seedNow(911), warm = R() < .6;
+  let back, fog, fx, micro, mx, drops = [], chk = 0, lastSq = 0, dsp = null;
+  function init() {
+    back = mk(W, H); const b = back.getContext('2d');
+    const gr = b.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, warm ? '#120c14' : '#081018'); gr.addColorStop(1, warm ? '#2a1610' : '#101c26');
+    b.fillStyle = gr; b.fillRect(0, 0, W, H);
+    for (let i = 0; i < 70; i++) {
+      const x = R() * W, y = H * (.25 + R() * .7), r = 8 + R() * 40, c = warm ? [`255,${150 + R() * 80 | 0},${60 + R() * 60 | 0}`, '255,236,200', '255,90,70'][R() * 3 | 0] : [`120,${170 + R() * 60 | 0},255`, '236,240,255', '255,200,120'][R() * 3 | 0];
+      const rg = b.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, `rgba(${c},.55)`); rg.addColorStop(.7, `rgba(${c},.22)`); rg.addColorStop(1, `rgba(${c},0)`);
+      b.fillStyle = rg; b.beginPath(); b.arc(x, y, r, 0, TAU); b.fill();
+    }
+    fog = mk(Math.ceil(W / 2), Math.ceil(H / 2)); fx = fog.getContext('2d'); fx.fillStyle = 'rgb(190,196,206)'; fx.fillRect(0, 0, fog.width, fog.height);
+    micro = mk(W, H); mx = micro.getContext('2d');
+    for (let i = 0; i < 500; i++) dot(R() * W, R() * H, .6 + R() * 1.6);
+    drops = []; for (let i = 0; i < 30; i++) drops.push({ x: R() * W, y: R() * H, r: 1.5 + R() * 3, vy: 0 });
+    dsp = mk(32, 32); const d = dsp.getContext('2d'), dg = d.createRadialGradient(13, 12, 1, 16, 16, 16);
+    dg.addColorStop(0, 'rgba(255,255,255,.75)'); dg.addColorStop(.25, 'rgba(255,255,255,.08)'); dg.addColorStop(.8, 'rgba(0,0,0,.25)'); dg.addColorStop(1, 'rgba(0,0,0,.5)');
+    d.fillStyle = dg; d.beginPath(); d.arc(16, 16, 16, 0, TAU); d.fill();
+  }
+  function dot(x, y, r) { mx.fillStyle = 'rgba(0,0,0,.28)'; mx.beginPath(); mx.arc(x, y + r * .3, r, 0, TAU); mx.fill(); mx.fillStyle = 'rgba(255,255,255,.35)'; mx.beginPath(); mx.arc(x - r * .3, y - r * .3, r * .4, 0, TAU); mx.fill(); }
+  function wipe(x, y, r) { fx.globalCompositeOperation = 'destination-out'; fx.beginPath(); fx.arc(x / 2, y / 2, r / 2, 0, TAU); fx.fill(); fx.globalCompositeOperation = 'source-over'; }
+  return {
+    dur: 75, hiddenTitle: 'it is still raining',
+    enter() { init(); S.drone([mtof(36), mtof(43), mtof(48), mtof(55)], .1, 350); },
+    resize() { init(); },
+    move(p) {
+      const n = Math.ceil(Math.hypot(p.dx, p.dy) / 6) + 1;
+      for (let i = 0; i < n; i++) { const x = p.px + p.dx * i / n, y = p.py + p.dy * i / n; wipe(x, y, 38); mx.globalCompositeOperation = 'destination-out'; mx.beginPath(); mx.arc(x, y, 18, 0, TAU); mx.fill(); mx.globalCompositeOperation = 'source-over'; }
+      if (Math.hypot(p.dx, p.dy) > 3 && T - lastSq > .09) { lastSq = T; S.noise({ dur: .08, f: 2200 + Math.abs(p.dx) * 40, q: 6, g: .012, wet: .2 }); }
+    },
+    up(p) { if (p.moved < 10) { drops.push({ x: p.x, y: p.y, r: 5, vy: 0 }); S.note(rand(1800, 2600), { g: .02, d: .15 }); } },
+    shake() { for (const d of drops) d.r += 2.5; S.noise({ dur: .5, f: 3000, g: .04 }); },
+    frame(dt) {
+      // the breath on the glass returns
+      fx.globalCompositeOperation = 'source-over'; fx.globalAlpha = dt * .05; fx.fillStyle = 'rgb(190,196,206)'; fx.fillRect(0, 0, fog.width, fog.height); fx.globalAlpha = 1;
+      const rain = .4 + (LIVE.wx && LIVE.wx.rain ? LIVE.wx.rain * 2 : 0);
+      if (Math.random() < dt * 3 * rain) { const x = rand(0, W), y = rand(0, H), r = rand(.8, 2.2); dot(x, y, r); if (Math.random() < .25) drops.push({ x, y, r: r + 1, vy: 0 }); if (Math.random() < .3) S.note(rand(2500, 4500), { g: .004, d: .05, wet: .3 }); }
+      for (const d of drops) { d.r = Math.min(9, d.r + dt * .08); }
+      for (let i = drops.length - 1; i >= 0; i--) {
+        const d = drops[i];
+        if (d.r > 4.6) {
+          if (d.vy === 0) S.note(rand(500, 900), { g: .012, d: .4, glide: 1.4 });
+          d.vy = Math.min(220, d.vy + 120 * dt * (d.r / 6)); d.y += d.vy * dt; d.x += Math.sin(d.y * .05 + i) * .4 + TILT.rx * dt * 30;
+          d.r -= dt * .25;
+          wipe(d.x, d.y, d.r * 2.4); mx.globalCompositeOperation = 'destination-out'; mx.beginPath(); mx.arc(d.x, d.y, d.r * 1.3, 0, TAU); mx.fill(); mx.globalCompositeOperation = 'source-over';
+          if (Math.random() < dt * 8) dot(d.x + rand(-2, 2), d.y - d.r * 2, rand(.5, 1.2));
+          for (let j = drops.length - 1; j >= 0; j--) { const e = drops[j]; if (e !== d && Math.hypot(e.x - d.x, e.y - d.y) < d.r + e.r) { d.r = Math.min(10, Math.hypot(d.r, e.r)); drops.splice(j, 1); if (j < i) i--; } }
+        }
+        if (d.y > H + 20) drops.splice(drops.indexOf(d), 1);
+      }
+      while (drops.length > 70) drops.shift();
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.drawImage(back, 0, 0, W, H);
+      g.globalAlpha = .62; g.drawImage(fog, 0, 0, W, H); g.globalAlpha = 1;
+      g.drawImage(micro, 0, 0, W, H);
+      for (const d of drops) g.drawImage(dsp, d.x - d.r, d.y - d.r * 1.1, d.r * 2, d.r * 2.2);
+      if ((chk += dt) > 1) {
+        chk = 0; const D = fx.getImageData(0, 0, fog.width, fog.height).data; let a = 0, n = 0;
+        for (let i = 3; i < D.length; i += 4 * 37) { a += D[i]; n++; }
+        if (a / n / 255 < .15 && found('wipe')) S.bell(mtof(64), 0, .5);
+      }
+    }
+  };
+}
+
+// ======================================================================
+// XXXII. RIVERS — rain falls on new land and finds its way down,
+//        cutting valleys as it goes. Press and hold to raise a hill;
+//        hold long and a spring rises. Will it reach the sea?
+// ======================================================================
+function Rivers() {
+  const R = seedNow(6007), noise = valueNoise(R, 3), SEA = .34;
+  let cs, gw, gh, hgt, flow, cvs, cx2, img, springs = [], held = null, lastW = 0;
+  function init() {
+    cs = DESK ? 5 : 4; gw = Math.ceil(W / cs); gh = Math.ceil(H / cs);
+    hgt = new Float32Array(gw * gh); flow = new Float32Array(gw * gh);
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) { const u = x / gw, v = y / gh, edge = Math.min(u, v, 1 - u, 1 - v); hgt[y * gw + x] = noise(u * gw / 90, v * gh / 90) * .8 + Math.min(.35, edge * 1.6) - .05; }
+    cvs = mk(gw, gh); cx2 = cvs.getContext('2d'); img = cx2.createImageData(gw, gh); springs = [];
+  }
+  function rain(x, y, sp) {
+    let sed = 0;
+    for (let k = 0; k < 60; k++) {
+      const i = y * gw + x;
+      if (hgt[i] < SEA) { hgt[i] += sed; if (sp) sp.reached = true; return; }
+      let bj = -1, bh = hgt[i];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue; const X = x + dx, Y = y + dy;
+        if (X < 0 || Y < 0 || X >= gw || Y >= gh) { if (sp) sp.reached = true; return; }
+        const j = Y * gw + X; if (hgt[j] < bh) { bh = hgt[j]; bj = j; }
+      }
+      if (bj < 0) { hgt[i] += sed; return; }
+      const drop = hgt[i] - bh, e = Math.min(drop * .25, .0015);
+      hgt[i] -= e; sed += e; if (sed > drop * 2) { const dpos = sed * .3; hgt[i] += dpos; sed -= dpos; }
+      x = bj % gw; y = bj / gw | 0; flow[bj] += 1;
+    }
+    hgt[y * gw + x] += sed;
+  }
+  return {
+    dur: 80, hiddenTitle: 'the water is finding its way',
+    enter() { init(); S.drone([mtof(36), mtof(43), mtof(48), mtof(55)], .14, 450); },
+    resize() { init(); },
+    down(p) { held = { p, t: T, x: p.x, y: p.y, sprung: false }; },
+    up(p) { if (held && held.p === p) held = null; },
+    dbl() { springs = []; },
+    shake() { init(); S.noise({ dur: 1, f: 300, ft: 'lowpass', g: .1 }); },
+    frame(dt) {
+      if (held) {
+        const p = held.p, X = p.x / cs, Y = p.y / cs;
+        for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) { const x = X + dx | 0, y = Y + dy | 0; if (x >= 0 && y >= 0 && x < gw && y < gh) hgt[y * gw + x] += Math.exp(-(dx * dx + dy * dy) / 14) * dt * .12; }
+        if (Math.hypot(p.x - held.x, p.y - held.y) > 30) { held.x = p.x; held.y = p.y; held.t = T; }
+        if (!held.sprung && T - held.t > 3) { held.sprung = true; springs.push({ x: X | 0, y: Y | 0, reached: false }); if (springs.length > 3) springs.shift(); S.bell(scaleNote(55, springs.length * 2), 0, .6); buzz(15); }
+      }
+      const n = Math.round(260 * Math.max(.5, QUAL)) + (LIVE.wx && LIVE.wx.rain ? 200 : 0);
+      for (let k = 0; k < n; k++) rain(Math.random() * gw | 0, Math.random() * gh | 0, null);
+      for (const sp of springs) for (let k = 0; k < 14; k++) { const x = clamp(sp.x + (Math.random() * 3 | 0) - 1, 1, gw - 2), y = clamp(sp.y + (Math.random() * 3 | 0) - 1, 1, gh - 2); rain(x, y, sp); }
+      if (springs.some(sp => sp.reached) && found('spring')) { [0, 4, 7, 11].forEach((q, i) => S.note(scaleNote(55, q), { g: .04, d: 3, at: i * .12 })); }
+      const D = img.data; let wet = 0;
+      for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+        const i = y * gw + x, h = hgt[i], o = i * 4; flow[i] *= .96;
+        if (h < SEA) { const d = clamp((SEA - h) * 4, 0, 1); D[o] = 14 - d * 8; D[o + 1] = 34 - d * 14; D[o + 2] = 58 - d * 20; D[o + 3] = 255; continue; }
+        const sh = clamp(.55 + ((x > 0 && y > 0 ? hgt[i - gw - 1] : h) - h) * 40, 0, 1.2), e = clamp((h - SEA) * 1.8, 0, 1);
+        let r = lerp(70, 190, e) * sh, gg = lerp(92, 170, e) * sh, b = lerp(52, 140, e) * sh;
+        if (e > .82) { r = gg = b = 230 * sh; }
+        const w = clamp(Math.log(1 + flow[i]) * .45, 0, 1); wet += w;
+        D[o] = lerp(r, 70, w); D[o + 1] = lerp(gg, 150, w); D[o + 2] = lerp(b, 230, w); D[o + 3] = 255;
+      }
+      cx2.putImageData(img, 0, 0);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.drawImage(cvs, 0, 0, gw * cs, gh * cs);
+      for (const sp of springs) { g.fillStyle = `rgba(200,235,255,${.6 + .4 * Math.sin(T * 4)})`; g.beginPath(); g.arc(sp.x * cs, sp.y * cs, 3.5, 0, TAU); g.fill(); }
+      if (T - lastW > 2.2) { lastW = T; S.noise({ dur: 2.4, f: 500 + clamp(wet / (gw * gh) * 6000, 0, 1500), ft: 'lowpass', g: .025, wet: .6 }); }
+    }
+  };
+}
+
+// ======================================================================
+// XXXIII. DEEP — the Mandelbrot set: one line of arithmetic, and a
+//         coastline with no bottom. It sinks slowly by itself; touch to
+//         steer, double-tap to rise. There is a floor, very far down.
+// ======================================================================
+function Deep() {
+  const SPOTS = [[-.743643887037151, .13182590420533], [-.7453, .1127], [-1.25066, .02012], [-.16070135, 1.0375665], [.001643721971153, -.822467633298876],
+    [-1.768778833, -.001738996], [-.761574, -.0847596], [.27322626, .595153338], [-.10109636384562, .95628651080914], [-1.9408, 0]];
+  const R = seedNow(8191), ph = [R(), R(), R()], spot = SPOTS[R() * SPOTS.length | 0];
+  let cx = -.6, cy = 0, sc = 1.4, tx = spot[0], ty = spot[1], div = 1, rs = 3, sw, sh, work, wx, wimg, row = 0, wv = null, done, dv = null, boundary = .5, lastDrone = 0, floorT = 0;
+  function setup() {
+    rs = DESK ? 3 : 3; sw = Math.ceil(W / rs); sh = Math.ceil(H / rs);
+    work = mk(sw, sh); wx = work.getContext('2d'); wimg = wx.createImageData(sw, sh); done = mk(sw, sh); dv = null; start();
+  }
+  function start() { wv = { cx, cy, sc, it: Math.min(1600, 140 + Math.round(70 * Math.log10(1.4 / sc))) }; row = 0; wv.inside = 0; wv.esc = 0; }
+  function render(budget) {
+    const t0 = performance.now(), D = wimg.data, asp = sw / sh, { it } = wv, s2 = wv.sc * 2 / sh;
+    while (row < sh && performance.now() - t0 < budget) {
+      const y0 = wv.cy + (row - sh / 2) * s2;
+      for (let col = 0; col < sw; col++) {
+        const x0 = wv.cx + (col - sw / 2) * s2; let x = 0, y = 0, xx = 0, yy = 0, n = 0;
+        while (n < it && xx + yy < 256) { y = 2 * x * y + y0; x = xx - yy + x0; xx = x * x; yy = y * y; n++; }
+        const o = (row * sw + col) * 4;
+        if (n >= it) { D[o] = 5; D[o + 1] = 4; D[o + 2] = 7; wv.inside++; }
+        else {
+          const sm = Math.max(0, n + 1 - Math.log2(Math.log2(xx + yy) / 2)), t = Math.sqrt(sm) * .21, lv = clamp(sm / 14, .08, 1); wv.esc++;
+          D[o] = lv * (128 + 127 * Math.cos(TAU * (t + ph[0]))); D[o + 1] = lv * (110 + 110 * Math.cos(TAU * (t * 1.1 + ph[1]))); D[o + 2] = lv * (120 + 120 * Math.cos(TAU * (t * .9 + ph[2])));
+        }
+        D[o + 3] = 255;
+      }
+      row++;
+    }
+    if (row >= sh) {
+      wx.putImageData(wimg, 0, 0); done.getContext('2d').drawImage(work, 0, 0); dv = wv;
+      boundary = wv.inside / (sw * sh);
+      if (dv.sc < 1e-9 && boundary > .03 && boundary < .97 && found('depth')) S.bell(mtof(38), 0, 1);
+      start();
+    }
+  }
+  return {
+    dur: 90, hiddenTitle: 'it is still sinking',
+    enter() { setup(); S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .2, 500); },
+    resize() { setup(); },
+    up(p) {
+      if (p.moved > 12) return;
+      const s2 = sc * 2 / H; tx = cx + (p.x - W / 2) * s2; ty = cy + (p.y - H / 2) * s2; div = 1;
+      S.note(scaleNote(50, Math.round(-Math.log10(sc)) % 15), { g: .05, d: 1.8 });
+    },
+    move(p) { const s2 = sc * 2 / H; tx -= p.dx * s2; ty -= p.dy * s2; cx -= p.dx * s2; cy -= p.dy * s2; },
+    dbl() { sc = Math.min(1.6, sc * 30); div = -1; },
+    wheel(d) { sc = clamp(sc * Math.exp(d * .003), 5e-14, 1.6); },
+    shake() { const s = SPOTS[Math.random() * SPOTS.length | 0]; tx = s[0]; ty = s[1]; sc = 1.4; cx = -.6; cy = 0; div = 1; },
+    frame(dt) {
+      // sink toward the target; at the floor of what numbers can hold, drift back up
+      if (sc < 3e-13) floorT += dt; else floorT = Math.max(0, floorT - dt);
+      if (floorT > 4) div = -1;
+      if (div < 0 && sc > .5) div = 1;
+      sc = clamp(sc * Math.exp(-dt * (P.size ? .55 : .22) * div), 2e-13, 1.6);
+      cx = lerp(cx, tx, Math.min(1, dt * .8)); cy = lerp(cy, ty, Math.min(1, dt * .8));
+      if (dv && dv.sc / sc > 2.5) start();   // the picture in progress is already too far behind: begin again
+      render(DESK ? 9 : 7);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      if (dv) {   // the last finished picture, moved and scaled to where the view is now
+        const k = dv.sc / sc, s2 = sc * 2 / H, ox = W / 2 + (dv.cx - cx) / s2, oy = H / 2 + (dv.cy - cy) / s2;
+        g.drawImage(done, ox - W / 2 * k, oy - H / 2 * k, sw * rs * k, sh * rs * k);
+      }
+      if (T - lastDrone > 4) { lastDrone = T; const dpt = clamp(-Math.log10(sc), 0, 13); S.drone([mtof(50 - dpt * 1.5), mtof(57 - dpt * 1.5), mtof(62 - dpt), mtof(69 - dpt)], .18, 500 + boundary * 800); }
+    }
+  };
+}
+
+// ======================================================================
+// XXXIV. AURORA — curtains of light over a dark ridge, as bright as the
+//        real storm on the Sun's wind is right now. Stir them. Hold the
+//        top of the sky and they gather into a crown.
+// ======================================================================
+function Aurora() {
+  const R = seedNow(5113);
+  let ridge, sky0, strip, stars = [], bands = [], stir = 0, hold = null, crown = 0, hum = null, lastG = 0;
+  function init() {
+    sky0 = mk(W, H); const s = sky0.getContext('2d'), gr = s.createLinearGradient(0, 0, 0, H);
+    gr.addColorStop(0, '#02030a'); gr.addColorStop(.6, '#061018'); gr.addColorStop(1, '#0a1a1c'); s.fillStyle = gr; s.fillRect(0, 0, W, H);
+    for (let i = 0; i < 220; i++) { s.fillStyle = `rgba(236,240,255,${R() * .6})`; s.fillRect(R() * W, R() * H * .75, 1.1, 1.1); }
+    ridge = mk(W, Math.ceil(H * .3)); const r = ridge.getContext('2d'), n = valueNoise(R, 2);
+    r.fillStyle = '#010203'; r.beginPath(); r.moveTo(0, ridge.height);
+    for (let x = 0; x <= W; x += 4) r.lineTo(x, ridge.height * (.35 + n(x / W, .3) * .5));
+    r.lineTo(W, ridge.height); r.closePath(); r.fill();
+    strip = mk(1, 256); const t = strip.getContext('2d'), sg = t.createLinearGradient(0, 256, 0, 0);
+    sg.addColorStop(0, 'rgba(90,255,170,0)'); sg.addColorStop(.06, 'rgba(110,255,180,.95)'); sg.addColorStop(.35, 'rgba(90,240,170,.45)'); sg.addColorStop(.7, 'rgba(190,100,255,.22)'); sg.addColorStop(1, 'rgba(190,100,255,0)');
+    t.fillStyle = sg; t.fillRect(0, 0, 1, 256);
+    bands = [0, 1, 2].map(i => ({ y: H * (.32 + i * .09 + R() * .05), amp: H * (.03 + R() * .05), f: (1.5 + R() * 2) / W * TAU, sp: .15 + R() * .25, ph: R() * TAU, h: H * (.16 + R() * .12) }));
+  }
+  const level = () => clamp(.4 + (LIVE.kp != null ? LIVE.kp : 2.5) * .08, .4, 1.15);
+  return {
+    dur: 80, hiddenTitle: 'the sky is moving',
+    enter() {
+      init(); S.drone([mtof(33), mtof(40), mtof(45), mtof(52)], .15, 380);
+      hum = S.partials([{ f: mtof(81), g: .006, pan: -.5 }, { f: mtof(86), g: .005, pan: .5 }, { f: mtof(88), g: .004 }, { f: mtof(93), g: .003, pan: .3 }]);
+      if (LIVE.kp >= 5) found('storm');
+    },
+    exit() { if (hum) hum.stop(); hum = null; },
+    resize() { init(); },
+    down(p) { if (p.y < H * .4) hold = p; },
+    up(p) { if (hold === p) hold = null; },
+    move(p) { stir = clamp(stir + Math.abs(p.dx) * .004, 0, 3); if (Math.abs(p.dx) > 6 && T - lastG > .08) { lastG = T; S.note(mtof(76 + Math.round(p.x / W * 12)), { g: .012, d: 1.2, wet: .9 }); } },
+    frame(dt) {
+      stir = Math.max(0, stir - dt * .4);
+      crown = hold && hold.moved < 40 ? Math.min(1, crown + dt / 6) : Math.max(0, crown - dt / 2);
+      if (crown >= 1 && found('corona')) { S.bell(mtof(69), 0, .7); buzz([10, 20, 10]); }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.drawImage(sky0, 0, 0, W, H);
+      g.globalCompositeOperation = 'lighter';
+      const L = level(), M = DESK ? 110 : 70, w = W / M * 1.8;
+      for (const b of bands) {
+        b.ph += dt * b.sp * (1 + stir);
+        for (let s = 0; s <= M; s++) {
+          let x = (s / M) * W * 1.2 - W * .1, y = b.y + Math.sin(x * b.f + b.ph) * b.amp + Math.sin(x * b.f * 2.3 - T * .7) * b.amp * .4 + TILT.ry * 20;
+          const a = L * (.18 + .2 * Math.sin(s * .7 + T * 1.3 + b.ph) + .1 * Math.sin(s * .23 - T * .4)), h = b.h * (1 + .3 * Math.sin(s * .3 + T * .5 + b.ph));
+          if (crown > 0 && hold) { x = lerp(x, hold.x + (x - W / 2) * .25, crown * .6); y = lerp(y, hold.y + 40, crown * .5); }
+          if (a <= 0) continue;
+          g.globalAlpha = Math.min(1, a); g.drawImage(strip, x, y - h, w, h);
+        }
+      }
+      if (crown > 0 && hold) {
+        g.globalAlpha = crown * .5 * L;
+        for (let k = 0; k < 36; k++) { const an = k / 36 * TAU + T * .05; g.save(); g.translate(hold.x, hold.y); g.rotate(an); g.drawImage(strip, -2, 10, 4 + Math.sin(T * 2 + k) * 2, H * .45 * (.6 + .4 * Math.sin(k * 1.7 + T))); g.restore(); }
+      }
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+      g.drawImage(ridge, 0, H - ridge.height, W, ridge.height);
+    }
+  };
+}
+
+// ======================================================================
+// XXXV. TIDE — the shore, with the sea where the real Moon puts it
+//       right now. Write in the sand; the waves take it. Drag the Moon
+//       across the sky and the sea follows.
+// ======================================================================
+function Tide() {
+  const R = seedNow(1213);
+  let sand, sx, marks, mk2, skyC = null, skyKey = "", seaC = null, seaKey = "", moonDrag = null, off = 0, span = null, wave = 0, waveT = 0, run = 0, lastW = 0, voice = null;
+  function realHA() {
+    const D = Date.now() / 86400000 + 2440587.5 - 2451545, ls = ((18.697374558 + 24.06570982441908 * D + CTX.lon / 15) % 24 + 24) % 24;
+    const M = (134.963 + 13.064993 * D) * RAD, F = (93.272 + 13.22935 * D) * RAD, ml = 218.316 + 13.176396 * D + 6.289 * Math.sin(M), mb = 5.128 * Math.sin(F);
+    const [ra] = eclToEq(ml, mb, D); return ((ls - ra + 36) % 24) - 12;   // hours, -12..12, 0 = the Moon due south
+  }
+  const ha = () => ((realHA() + off + 36) % 24) - 12;
+  const springK = () => .7 + .3 * Math.abs(Math.cos(sky().phase * TAU));
+  const tide = () => Math.cos(2 * ha() * 15 * RAD) * springK();   // high water when the Moon is overhead, and when it is underfoot
+  const horizon = () => H * .36;
+  const moonXY = () => { const u = ha() / 12 * Math.PI; return [W / 2 - Math.sin(u) * W * .42, horizon() - Math.cos(u) * H * .3]; };
+  function init() {
+    sand = mk(W / 3, H / 3); sx = sand.getContext('2d');
+    const n = valueNoise(R, 8), id = sx.createImageData(sand.width, sand.height), D = id.data;
+    for (let y = 0; y < id.height; y++) for (let x = 0; x < id.width; x++) { const v = n(x / 133, y / 133) * 30 + (Math.random() - .5) * 18, o = (y * id.width + x) * 4; D[o] = 196 + v; D[o + 1] = 172 + v; D[o + 2] = 134 + v * .8; D[o + 3] = 255; }
+    sx.putImageData(id, 0, 0);
+    marks = mk(W / 2, H / 2); mk2 = marks.getContext('2d'); mk2.setTransform(.5, 0, 0, .5, 0, 0);
+  }
+  return {
+    dur: 80, hiddenTitle: 'the sea is coming back',
+    enter() { init(); S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .14, 450); },
+    resize() { init(); },
+    down(p) { const [mx, my] = moonXY(); if (Math.hypot(p.x - mx, p.y - my) < 44) { moonDrag = p; span = [ha(), ha()]; voice = S.voice(.03); } },
+    move(p) {
+      if (moonDrag === p) {
+        const u = Math.asin(clamp(-(p.x - W / 2) / (W * .42), -1, 1)), want = u * 12 / Math.PI;
+        off += want - ha(); const h = ha(); span[0] = Math.min(span[0], h); span[1] = Math.max(span[1], h);
+        if (voice) voice.set(mtof(57 + tide() * 7));
+        if (span[1] - span[0] > 9 && found('moon')) { S.bell(mtof(57), 0, .8); buzz([10, 30, 10]); }
+        return;
+      }
+      mk2.strokeStyle = 'rgba(120,92,60,.55)'; mk2.lineWidth = 3; mk2.lineCap = 'round'; mk2.beginPath(); mk2.moveTo(p.px, p.py); mk2.lineTo(p.x, p.y); mk2.stroke();
+      mk2.strokeStyle = 'rgba(255,240,215,.35)'; mk2.lineWidth = 1; mk2.beginPath(); mk2.moveTo(p.px + 1.5, p.py + 1.5); mk2.lineTo(p.x + 1.5, p.y + 1.5); mk2.stroke();
+    },
+    up(p) { if (moonDrag === p) { moonDrag = null; if (voice) { voice.end(); voice = null; } } },
+    exit() { if (voice) voice.end(); voice = null; },
+    frame(dt) {
+      if (!moonDrag) off *= Math.pow(.5, dt / 8);   // let go, and the real Moon takes the sea back
+      waveT -= dt;
+      if (waveT <= 0) { waveT = rand(5.5, 8.5); wave = 0; S.noise({ dur: 2.8, f: 700, ft: 'lowpass', g: .09, wet: .6 }); S.noise({ dur: 1.6, f: 4000, ft: 'highpass', g: .012, at: 2.2 }); }
+      wave += dt; const k = wave / 3.2;
+      run = k < 1 ? Math.sin(k * Math.PI / 2) : Math.max(0, 1 - (k - 1) * .45);
+      const hz = horizon(), base = lerp(H * .52, H * .74, (tide() + 1) / 2), edge = base + run * H * .09;
+      // the water rubs out what is written below its edge
+      mk2.globalCompositeOperation = 'destination-out'; mk2.fillStyle = `rgba(0,0,0,${Math.min(1, dt * 1.5)})`; mk2.fillRect(0, 0, W, edge); mk2.globalCompositeOperation = 'source-over';
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      const day = clamp((SUN.alt + 6) / 18, 0, 1), dk = Math.round(day * 40) + "/" + Math.round(hz);
+      if (skyKey !== dk) { skyKey = dk; skyC = mk(4, hz); const x = skyC.getContext("2d"), skyG = x.createLinearGradient(0, 0, 0, hz); skyG.addColorStop(0, `rgb(${lerp(6, 90, day)},${lerp(8, 140, day)},${lerp(20, 200, day)})`); skyG.addColorStop(1, `rgb(${lerp(30, 220, day)},${lerp(30, 200, day)},${lerp(50, 190, day)})`); x.fillStyle = skyG; x.fillRect(0, 0, 4, hz); }
+      g.drawImage(skyC, 0, 0, W, hz);
+      g.drawImage(sand, 0, hz / 3, sand.width, sand.height - hz / 3, 0, hz, W, H - hz);
+      g.drawImage(marks, 0, 0, W, H);
+      if (seaKey !== skyKey) { seaKey = skyKey; seaC = mk(4, 128); const x = seaC.getContext("2d"), sea = x.createLinearGradient(0, 0, 0, 128); sea.addColorStop(0, `rgb(${lerp(8, 40, day)},${lerp(20, 80, day)},${lerp(40, 120, day)})`); sea.addColorStop(1, `rgba(${lerp(30, 90, day)},${lerp(60, 150, day)},${lerp(80, 170, day)},.85)`); x.fillStyle = sea; x.fillRect(0, 0, 4, 128); }
+      g.save(); g.beginPath(); g.moveTo(0, hz);
+      g.lineTo(W, hz); for (let x = W; x > -8; x -= 8) g.lineTo(Math.max(0, x), edge + Math.sin(x * .02 + T * .8) * 4 + Math.sin(x * .053 - T) * 3); g.closePath(); g.clip(); g.drawImage(seaC, 0, hz, W, edge - hz + 10); g.restore();
+      g.strokeStyle = `rgba(255,255,255,${.35 + run * .3})`; g.lineWidth = 2; g.beginPath();
+      for (let x = 0; x < W + 8; x += 8) { const X = Math.min(W, x), y = edge + Math.sin(X * .02 + T * .8) * 4 + Math.sin(X * .053 - T) * 3; x ? g.lineTo(X, y) : g.moveTo(X, y); } g.stroke();
+      const [mx, my] = moonXY();
+      if (my < hz) { g.fillStyle = 'rgba(255,248,230,.95)'; g.beginPath(); g.arc(mx, my, Math.min(W, H) * .035, 0, TAU); g.fill(); g.fillStyle = 'rgba(255,248,230,.12)'; g.beginPath(); g.arc(mx, my, Math.min(W, H) * .09, 0, TAU); g.fill(); }
+          }
+  };
+}
+
+// ======================================================================
+// XXXVI. MOTES — dust turning in a beam of light. The beam comes in at
+//        the angle of the real Sun (or the Moon, or a lamp at night).
+//        Fan the air. One of them is gold: can you keep up with it?
+// ======================================================================
+function Motes() {
+  const R = seedNow(3313), N = DESK ? 900 : 600;
+  let M = [], room, beam = null, follow = 0, hum = null, lastIn = 0;
+  function geom() {
+    const k = sky(), sunUp = SUN.alt > 2, moonUp = k.moon[0] > .05;
+    const alt = (38 + clamp(sunUp ? SUN.alt : moonUp ? k.moon[0] / RAD : 90, 0, 90) / 90 * 44) * RAD, side = (sunUp ? SUN.az : k.moon[1]) < Math.PI ? 1 : -1;
+    const col = sunUp ? '255,214,150' : moonUp ? '170,195,255' : '255,180,110';
+    return { ox: side > 0 ? W * .12 : W * .88, oy: -10, dx: Math.cos(alt) * side, dy: Math.sin(alt), w: Math.min(W, H) * (sunUp ? .34 : .22), col, bright: sunUp ? 1 : .55 };
+  }
+  function init() {
+    beam = geom(); M = [];
+    for (let i = 0; i < N; i++) M.push({ x: R() * W, y: R() * H, vx: 0, vy: 0, s: .6 + R() * 1.3, b: .3 + R() * .7 });
+    room = mk(W, H); const r = room.getContext('2d'); r.fillStyle = '#060507'; r.fillRect(0, 0, W, H);
+    const L = Math.hypot(W, H) * 1.3, ex = beam.ox + beam.dx * L, ey = beam.oy + beam.dy * L, nx = -beam.dy, ny = beam.dx, hw = beam.w / 2;
+    const lg = r.createLinearGradient(beam.ox, beam.oy, ex, ey); lg.addColorStop(0, `rgba(${beam.col},${.3 * beam.bright})`); lg.addColorStop(1, `rgba(${beam.col},0)`);
+    r.fillStyle = lg; r.beginPath(); r.moveTo(beam.ox + nx * hw, beam.oy + ny * hw); r.lineTo(beam.ox - nx * hw, beam.oy - ny * hw); r.lineTo(ex - nx * hw * 1.6, ey - ny * hw * 1.6); r.lineTo(ex + nx * hw * 1.6, ey + ny * hw * 1.6); r.closePath(); r.fill();
+    const fl = r.createRadialGradient(ex * .5 + beam.ox * .5, H, 0, ex * .5 + beam.ox * .5, H, W * .5); fl.addColorStop(0, `rgba(${beam.col},${.1 * beam.bright})`); fl.addColorStop(1, 'rgba(0,0,0,0)'); r.fillStyle = fl; r.fillRect(0, 0, W, H);
+  }
+  const lit = (x, y) => { const px = x - beam.ox, py = y - beam.oy, along = px * beam.dx + py * beam.dy, d = Math.abs(px * -beam.dy + py * beam.dx), hw = beam.w / 2 * (1 + along / Math.hypot(W, H) * .6); return d < hw ? 1 - (d / hw) ** 2 : 0; };
+  return {
+    dur: 70, hiddenTitle: 'the dust is still turning',
+    enter() { init(); S.drone([mtof(45), mtof(52), mtof(57), mtof(64)], .08, 500); },
+    exit() { if (hum) hum.end(); hum = null; },
+    resize() { init(); },
+    move(p) { for (const m of M) { const d = Math.hypot(m.x - p.x, m.y - p.y); if (d < 90) { const k = (1 - d / 90) * .8; m.vx += p.dx * k; m.vy += p.dy * k; } } if (Math.hypot(p.dx, p.dy) > 8 && Math.random() < .2) S.noise({ dur: .3, f: 600, ft: 'lowpass', g: .02 }); },
+    shake() { for (const m of M) { m.vx += rand(-60, 60); m.vy += rand(-60, 60); } },
+    frame(dt) {
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.drawImage(room, 0, 0, W, H);
+      g.globalCompositeOperation = 'lighter';
+      const gm = M[0]; let near = false;
+      for (let i = 0; i < M.length; i++) {
+        const m = M[i];
+        m.vx += (Math.sin(m.y * .011 + T * .3) * Math.cos(m.x * .013) * 6 + (Math.random() - .5) * 8 + TILT.rx * 4) * dt;
+        m.vy += (Math.cos(m.x * .009 - T * .2) * Math.sin(m.y * .012) * 6 + (Math.random() - .5) * 8 + 1.2) * dt;
+        m.vx *= .985; m.vy *= .985; m.x += m.vx * dt * 10; m.y += m.vy * dt * 10;
+        if (m.x < -5) m.x += W + 10; else if (m.x > W + 5) m.x -= W + 10; if (m.y < -5) m.y += H + 10; else if (m.y > H + 5) m.y -= H + 10;
+        const l = lit(m.x, m.y);
+        if (i === 0) continue;
+        const a = (.05 + l * (beam.bright > .9 ? 1 : .8)) * m.b; if (a < .02) continue;
+        g.fillStyle = `rgba(${beam.col},${a})`; g.fillRect(m.x, m.y, m.s, m.s);
+        if (l > .9 && m.b > .95 && T - lastIn > .4) { lastIn = T; S.note(rand(3000, 5200), { g: .004, d: .4, wet: .95 }); }
+      }
+      for (const p of P.values()) if (Math.hypot(p.x - gm.x, p.y - gm.y) < 34) near = true;
+      follow = near ? follow + dt : Math.max(0, follow - dt * 2);
+      if (near && !hum) hum = S.voice(.02); if (hum) { hum.set(mtof(69 + follow * 2)); if (!near) { hum.end(); hum = null; } }
+      if (follow > 3 && found('mote')) S.bell(mtof(81), 0, .5);
+      const ga = .6 + .4 * Math.sin(T * 3) + follow * .2;
+      g.globalAlpha = Math.min(1, ga * .5); g.drawImage(sprite('255,207,107', 32), gm.x - 9 - follow * 3, gm.y - 9 - follow * 3, 18 + follow * 6, 18 + follow * 6);
+      g.globalAlpha = 1; g.fillStyle = '#ffd98a'; g.fillRect(gm.x - 1, gm.y - 1, 2.2, 2.2);
+      g.globalCompositeOperation = 'source-over';
+    }
+  };
+}
+
+// ======================================================================
+// XXXVII. YEAR — every day of this year on one spiral. The same for
+//         everyone, and it takes a whole real year to finish. The days
+//         you came are gold. Touch a day to hear how long its light was.
+// ======================================================================
+function Year() {
+  const now = new Date(), y = now.getFullYear(), start = new Date(y, 0, 1), days = Math.round((new Date(y + 1, 0, 1) - start) / 864e5), today = Math.floor((now - start) / 864e5);
+  const mine = new Set(MEM.days && MEM.days.y === y ? MEM.days.list : [today]);
+  let stroke = null, lastNote = -1, ring = 0;
+  const pos = i => { const u = i / days, a = -Math.PI / 2 + u * TAU * 3, R0 = Math.min(W, H) * .07, R1 = Math.min(W, H) * .46, r = lerp(R0, R1, u); return [W / 2 + Math.cos(a) * r, H / 2 + Math.sin(a) * r]; };
+  const light = i => { const dec = -23.44 * Math.cos(TAU * (i + 10) / 365) * RAD, x = -Math.tan(CTX.lat * RAD) * Math.tan(dec); return x <= -1 ? 24 : x >= 1 ? 0 : 24 / Math.PI * Math.acos(x); };
+  function near(x, y) { let b = -1, bd = 26; for (let i = 0; i < days; i++) { const [px, py] = pos(i), d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; b = i; } } return b; }
+  function touch(i) { if (i < 0 || i === lastNote) return; lastNote = i; if (stroke) stroke.add(i); S.note(mtof(45 + light(i) * 1.6), { g: i <= today ? .04 : .015, d: 1.4, pan: (pos(i)[0] / W) * 2 - 1 }); }
+  return {
+    dur: 60, hiddenTitle: 'the year is still turning',
+    enter() { const sea = season(); S.drone([[mtof(36), mtof(43), mtof(48), mtof(51)], [mtof(38), mtof(45), mtof(50), mtof(54)], [mtof(40), mtof(47), mtof(52), mtof(56)], [mtof(37), mtof(44), mtof(49), mtof(52)]][sea], .15, 600); },
+    down(p) { stroke = new Set(); lastNote = -1; touch(near(p.x, p.y)); },
+    move(p) { touch(near(p.x, p.y)); },
+    up() {
+      if (stroke && stroke.has(0) && stroke.has(today) && stroke.size >= Math.max(3, today * .6) && found('yearlong')) { ring = 1; S.bell(mtof(57), 0, .9); }
+      stroke = null;
+    },
+    frame(dt) {
+      ring = Math.max(0, ring - dt * .4);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      g.strokeStyle = 'rgba(236,228,214,.06)'; g.lineWidth = 1; g.beginPath();
+      for (let i = 0; i < days; i++) { const [x, yy] = pos(i); i ? g.lineTo(x, yy) : g.moveTo(x, yy); } g.stroke();
+      for (let m = 0; m < 12; m++) { const i = Math.round((new Date(y, m, 1) - start) / 864e5), [x, yy] = pos(i); g.fillStyle = 'rgba(236,228,214,.25)'; g.fillRect(x - .5, yy - 6, 1, 12); }
+      for (let i = 0; i < days; i++) {
+        const [x, yy] = pos(i), r = 1.2 + light(i) / 24 * 2.4;
+        if (i === today) { const k = .5 + .5 * Math.sin(T * 2.5); g.fillStyle = `rgba(255,106,77,${.3 * k})`; g.beginPath(); g.arc(x, yy, r * 4, 0, TAU); g.fill(); g.fillStyle = '#ff6a4d'; }
+        else if (mine.has(i)) g.fillStyle = 'rgba(255,207,107,.95)';
+        else g.fillStyle = i < today ? 'rgba(236,228,214,.38)' : 'rgba(236,228,214,.08)';
+        if (stroke && stroke.has(i)) g.fillStyle = '#f3ebdf';
+        g.beginPath(); g.arc(x, yy, r, 0, TAU); g.fill();
+      }
+      if (ring > 0) { g.strokeStyle = `rgba(255,207,107,${ring * .5})`; g.lineWidth = 1.5; g.beginPath(); g.arc(W / 2, H / 2, Math.min(W, H) * (.5 - ring * .1), 0, TAU); g.stroke(); }
+    }
+  };
+}
+
+// ======================================================================
+// CROSSING — two movements at once, one seen through the other. Every
+//            visit pairs a different two.
+// ======================================================================
+function withG(ctx, fn) { const keep = g; g = ctx; try { return fn(); } finally { g = keep; } }
+function Crossing() {
+  const LIGHT = [Shy, Sunflower, Bodies, Butterfly, Epicycles, Pendulums, Flock, Harmonograph, Call, Fireflies, Aurora, Motes, Murmur, Rings, Staircase, Swing, Year, Penrose];
+  const R = rng((MEM.visits * 131 + (Date.now() / 6e4 | 0)) | 0), ai = R() * LIGHT.length | 0; let bi = R() * (LIGHT.length - 1) | 0; if (bi >= ai) bi++;
+  let A = null, B = null, off = null, ox = null;
+  function surface() { off = mk(cv.width, cv.height); ox = off.getContext('2d'); ox.setTransform(DPR, 0, 0, DPR, 0, 0); }
+  const both = (k, ...a) => { if (A[k]) A[k](...a); if (B[k]) withG(ox, () => B[k](...a)); };
+  return {
+    dur: 75, hiddenTitle: 'two things are happening at once', noLens: true,
+    enter() { A = LIGHT[ai](); B = LIGHT[bi](); surface(); A.enter(); withG(ox, () => B.enter()); found('crossing'); },
+    exit() { if (A.exit) A.exit(); if (B.exit) B.exit(); },
+    resize() { surface(); both('resize'); },
+    down(p) { both('down', p); }, move(p) { both('move', p); }, up(p) { both('up', p); }, dbl(p) { both('dbl', p); },
+    shake(k) { both('shake', k); }, wheel(d, e) { both('wheel', d, e); }, thunder() { both('thunder'); }, away(s) { both('away', s); }, located() { both('located'); },
+    frame(dt) {
+      A.frame(dt); withG(ox, () => B.frame(dt));
+      g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'screen'; g.globalAlpha = .8; g.drawImage(off, 0, 0); g.restore();
+    }
+  };
+}
+
+// ======================================================================
+// HOURGLASS — hidden. Reached by turning the phone over once the third
+//             constellation is complete. The sand is every minute you
+//             have spent here; the gold grains are what you found.
+// ======================================================================
+function Hourglass() {
+  let cs, gw, gh, grid, mask, cvs, cx2, img, down = 1, lastTick = 0, flipT = 0, wasFace = false;
+  function init() {
+    cs = DESK ? 4 : 3; gw = Math.ceil(W / cs); gh = Math.ceil(H / cs);
+    grid = new Uint8Array(gw * gh); mask = new Uint8Array(gw * gh);
+    const cx = gw / 2, top = gh * .08, bot = gh * .92, mid = gh / 2, half = Math.min(gw * .42, gh * .3);
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+      if (y < top || y > bot) continue; const k = Math.abs(y - mid) / (mid - top), w = Math.max(1.6, half * Math.pow(k, .9));
+      if (Math.abs(x - cx) < w) mask[y * gw + x] = 1;
+    }
+    let n = Math.min(Math.round(MEM.total / 30) + 2500, (gw * gh * .2) | 0), gold = Object.keys(MEM.found).length * 3;
+    for (let y = Math.round(top); y < mid && n > 0; y++) for (let x = 0; x < gw && n > 0; x++) { const i = y * gw + x; if (mask[i]) { if (gold > 0 && Math.random() < .2) { grid[i] = 2; gold--; } else grid[i] = 1; n--; } }
+    cvs = mk(gw, gh); cx2 = cvs.getContext('2d'); img = cx2.createImageData(gw, gh);
+  }
+  return {
+    dur: 120, hiddenTitle: 'it is still running', noLens: true,
+    enter() { init(); found('hourglass'); S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .2, 600); },
+    resize() { init(); },
+    dbl() { down = -down; flipT = T; S.bell(mtof(50), 0, .6); buzz(20); },
+    shake() { down = -down; flipT = T; },
+    frame(dt) {
+      if (FACE.down && !wasFace) { down = -down; flipT = T; } wasFace = FACE.down;
+      if (TILT.ry < -.85 && down > 0 && T - flipT > 2) { down = -1; flipT = T; } else if (TILT.ry > .3 && down < 0 && T - flipT > 2) { down = 1; flipT = T; }
+      let moved = 0, neck = 0;
+      for (let s = 0; s < 2; s++) {
+        const y0 = down > 0 ? gh - 2 : 1, y1 = down > 0 ? 0 : gh - 1;
+        for (let y = y0; y !== y1; y -= down) {
+          const ny = y + down, l2r = Math.random() < .5;
+          for (let k = 0; k < gw; k++) {
+            const x = l2r ? k : gw - 1 - k, i = y * gw + x; if (!grid[i]) continue;
+            const j = ny * gw + x;
+            if (mask[j] && !grid[j]) { grid[j] = grid[i]; grid[i] = 0; moved++; if (Math.abs(y - gh / 2) < 1) neck++; continue; }
+            const dx = Math.random() < .5 ? -1 : 1;
+            for (const d of [dx, -dx]) { const jj = ny * gw + x + d; if (x + d >= 0 && x + d < gw && mask[jj] && !grid[jj]) { grid[jj] = grid[i]; grid[i] = 0; moved++; break; } }
+          }
+        }
+      }
+      if (neck && T - lastTick > .07) { lastTick = T; S.note(rand(2400, 3600), { g: .006, d: .06, wet: .4 }); }
+      const D = img.data;
+      for (let i = 0, n = gw * gh; i < n; i++) {
+        const o = i * 4, v = grid[i];
+        if (v === 2) { D[o] = 255; D[o + 1] = 207; D[o + 2] = 107; } else if (v) { D[o] = 226; D[o + 1] = 210; D[o + 2] = 180; } else if (mask[i]) { D[o] = 14; D[o + 1] = 13; D[o + 2] = 18; } else { D[o] = 5; D[o + 1] = 4; D[o + 2] = 7; }
+        D[o + 3] = 255;
+      }
+      cx2.putImageData(img, 0, 0);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.imageSmoothingEnabled = false; g.drawImage(cvs, 0, 0, gw * cs, gh * cs); g.imageSmoothingEnabled = true;
+    }
+  };
+}
+
+// ======================================================================
+// ONCE — hidden. It happens to each person once, on their tenth visit
+//        (or the first visit after it), and never again: every gesture
+//        you have left here, all at once, in gold.
+// ======================================================================
+function Once() {
+  let strokes = [], t = 0, bloomed = false;
+  return {
+    dur: 40, hiddenTitle: 'this will not happen again', noLens: true,
+    enter() {
+      MEM.once = Date.now(); saveMem(); found('once');
+      const pool = MEM.strokes.length ? MEM.strokes : [new Ghost().synth(), new Ghost().synth(), new Ghost().synth()];
+      strokes = pool.map((s, i) => ({ s, i, d: Math.random() * 3 }));
+      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .3, 1200);
+      [0, 4, 7, 11, 14, 18].forEach((k, i) => S.note(scaleNote(50, k), { g: .04, d: 8, a: 1.5, at: i * .4 }));
+    },
+    frame(dt) {
+      t += dt;
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.fillStyle = `rgba(5,4,7,${t > 20 ? .06 : .02})`; g.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'lighter'; g.lineWidth = 1.2; g.lineCap = 'round';
+      const turn = Math.max(0, t - 9) * .05, pull = clamp((t - 12) / 14, 0, 1);
+      for (const st of strokes) {
+        const k = clamp((t - st.d) / 7, 0, 1), n = Math.floor(st.s.length * k); if (n < 2) continue;
+        g.strokeStyle = `rgba(255,207,107,${.12 + .1 * Math.sin(T + st.i)})`; g.beginPath();
+        for (let i = 0; i < n; i++) {
+          let x = st.s[i][0] * W - W / 2, y = st.s[i][1] * H - H / 2; x *= 1 - pull * .8; y *= 1 - pull * .8;
+          const c = Math.cos(turn * (1 + st.i % 3)), s2 = Math.sin(turn * (1 + st.i % 3)), X = W / 2 + x * c - y * s2, Y = H / 2 + x * s2 + y * c;
+          i ? g.lineTo(X, Y) : g.moveTo(X, Y);
+        }
+        g.stroke();
+      }
+      if (t > 27 && !bloomed) { bloomed = true; S.bell(mtof(50), 0, 1.2); buzz([20, 40, 80]); }
+      if (bloomed) { const k = clamp((t - 27) / 5, 0, 1); g.globalCompositeOperation = 'source-over'; g.fillStyle = `rgba(243,235,223,${Math.sin(k * Math.PI) * .8})`; g.fillRect(0, 0, W, H); }
+      g.globalCompositeOperation = 'source-over';
+    }
+  };
+}
+
+// ======================================================================
+// FULL — only on the nights the Moon is full. It rises, enormous, and
+//        rings when you touch it.
+// ======================================================================
+const FULLMOON = (() => { const p = sky().phase; return Math.abs(p - .5) < .035; })();
+function Fullmoon() {
+  const R = rng(1969);
+  let disc, clouds = [], ripple = [], t = 0, sky1 = null;
+  function init() {
+    const s = Math.round(Math.min(W, H) * .6); disc = mk(s, s); const x = disc.getContext('2d'), r = s / 2;
+    x.save(); x.beginPath(); x.arc(r, r, r, 0, TAU); x.clip();
+    x.fillStyle = '#ece6d8'; x.fillRect(0, 0, s, s);
+    for (const [u, v, w, a] of [[.32, .3, .2, .3], [.55, .38, .16, .32], [.45, .55, .22, .26], [.68, .6, .12, .3], [.28, .62, .1, .22], [.6, .22, .09, .25]]) {
+      const gr = x.createRadialGradient(u * s, v * s, 0, u * s, v * s, w * s); gr.addColorStop(0, `rgba(120,116,110,${a})`); gr.addColorStop(1, 'rgba(120,116,110,0)'); x.fillStyle = gr; x.fillRect(0, 0, s, s);
+    }
+    for (let i = 0; i < 60; i++) { const cx = R() * s, cy = R() * s, cr = 1 + R() * s * .02; x.strokeStyle = `rgba(90,86,80,${.1 + R() * .15})`; x.lineWidth = 1; x.beginPath(); x.arc(cx, cy, cr, 0, TAU); x.stroke(); }
+    const limb = x.createRadialGradient(r, r, r * .6, r, r, r); limb.addColorStop(0, 'rgba(0,0,0,0)'); limb.addColorStop(1, 'rgba(40,30,20,.35)'); x.fillStyle = limb; x.fillRect(0, 0, s, s);
+    x.restore();
+    clouds = [0, 1, 2, 3].map(() => ({ x: R() * W * 1.5 - W * .25, y: H * (.2 + R() * .6), r: Math.min(W, H) * (.15 + R() * .2), v: 6 + R() * 10 }));
+  }
+  return {
+    dur: 90, hiddenTitle: 'the moon is full', noLens: true,
+    enter() { init(); found('fullmoon'); S.drone([mtof(36), mtof(43), mtof(48), mtof(55)], .2, 500); },
+    resize() { init(); },
+    up(p) {
+      const s = disc.width, cx = W / 2, cy = lerp(H * .78, H * .42, clamp(t / 50, 0, 1));
+      if (Math.hypot(p.x - cx, p.y - cy) < s / 2) { ripple.push({ x: p.x, y: p.y, t: 0 }); S.bell(scaleNote(50, Math.round((p.x - cx + s / 2) / s * 8)), 0, .8); buzz(12); }
+    },
+    frame(dt) {
+      t += dt;
+      const s = disc.width, cx = W / 2, cy = lerp(H * .78, H * .42, clamp(t / 50, 0, 1));
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      if (!sky1 || sky1.height !== Math.ceil(H)) { sky1 = mk(4, H); const x = sky1.getContext('2d'), sk = x.createLinearGradient(0, 0, 0, H); sk.addColorStop(0, '#030614'); sk.addColorStop(1, '#0c1430'); x.fillStyle = sk; x.fillRect(0, 0, 4, H); }
+      g.drawImage(sky1, 0, 0, W, H);
+      g.drawImage(sprite('236,230,216', 64), cx - s, cy - s, s * 2, s * 2);
+      g.drawImage(disc, cx - s / 2 + TILT.rx * 4, cy - s / 2 + TILT.ry * 4);
+      for (let i = ripple.length - 1; i >= 0; i--) { const q = ripple[i]; q.t += dt; if (q.t > 2.5) { ripple.splice(i, 1); continue; } g.strokeStyle = `rgba(255,248,230,${(1 - q.t / 2.5) * .5})`; g.lineWidth = 1; g.beginPath(); g.arc(q.x, q.y, q.t * 60, 0, TAU); g.stroke(); }
+      for (const c of clouds) {
+        c.x += c.v * dt; if (c.x - c.r > W) c.x = -c.r * 2;
+        g.globalAlpha = .8; g.drawImage(sprite('20,24,40', 128), c.x + TILT.rx * 12 - c.r, c.y - c.r, c.r * 2, c.r * 2); g.globalAlpha = 1;
+      }
+    }
+  };
+}
+
+// --- the third constellation: an hourglass, for the secrets of the later movements ---
+const DOABLE3 = ['sync', 'network', 'interference', 'endless', 'aperiodic', 'upright', 'wipe', 'spring', 'depth', 'corona', 'moon', 'mote', 'yearlong', 'turn'];
+const HG_PTS = [[-1, -1], [-.33, -1], [.33, -1], [1, -1], [.62, -.45], [.25, -.12], [-.25, -.12], [-.62, -.45], [-1, 1], [-.33, 1], [.33, 1], [1, 1], [.62, .45], [-.62, .45]];
+const HG_LINES = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 0], [8, 9], [9, 10], [10, 11], [11, 12], [12, 5], [6, 13], [13, 8]];
+function hourPt(i) { const s = Math.min(W * .16, H * .085), p = HG_PTS[i]; return [W * .5 + p[0] * s * .7, H * .53 + p[1] * s]; }
+const allDoable3 = () => DOABLE3.every(id => MEM.found[id]);
+
+// ======================================================================
+// LENSES — now and then a movement is seen through something: a mirror,
+//          an echo, a window in a window, a slow focus, a drifting
+//          colour, a shy grey, slowed time, a sway. Twist two fingers
+//          to turn the lens.
+// ======================================================================
+const LENSES = ['mirror', 'quad', 'echo', 'droste', 'focus', 'drift', 'shy', 'slow', 'sway'];
+const LENS = { k: null, t0: 0, f: 16, bufs: {}, css: '', tf: '' };
+function lensBuf(name, w = cv.width, h = cv.height) {
+  let c = LENS.bufs[name];
+  if (!c || c.width !== Math.max(1, w | 0) || c.height !== Math.max(1, h | 0)) { c = LENS.bufs[name] = mk(w, h); }
+  return c;
+}
+function setLens(k) {
+  LENS.k = k; LENS.t0 = T; LENS.f = 18;
+  if (k) { if (!Array.isArray(MEM.lenses)) MEM.lenses = []; if (!MEM.lenses.includes(k)) { MEM.lenses.push(k); saveMem(); } if (MEM.lenses.length >= LENSES.length) found('lenses'); }
+  if (k === 'echo') { const a = lensBuf('acc'); a.getContext('2d').clearRect(0, 0, a.width, a.height); }
+}
+function chooseLens() {
+  if (!cur || cur.paper || cur.noLens) return setLens(null);
+  const chance = Math.min(.4, .06 + MEM.visits * .02) * (QUAL > .55 ? 1 : .3);
+  setLens(Math.random() < chance ? LENSES[Math.random() * LENSES.length | 0] : null);
+}
+function applyLens(dt) {
+  const k = LENS.k; if (!k) return;
+  const cw = cv.width, ch = cv.height;
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  if (k === 'mirror' || k === 'quad') {
+    const b = lensBuf('tmp'), x = b.getContext('2d'); x.globalCompositeOperation = 'copy'; x.drawImage(cv, 0, 0);
+    g.translate(cw, 0); g.scale(-1, 1); g.drawImage(b, 0, 0, cw / 2, ch, 0, 0, cw / 2, ch); g.setTransform(1, 0, 0, 1, 0, 0);
+    if (k === 'quad') { x.drawImage(cv, 0, 0); g.translate(0, ch); g.scale(1, -1); g.drawImage(b, 0, 0, cw, ch / 2, 0, 0, cw, ch / 2); }
+  } else if (k === 'echo') {
+    const a = lensBuf('acc'), x = a.getContext('2d');
+    g.globalCompositeOperation = 'lighten'; g.globalAlpha = .9; g.drawImage(a, 0, 0);
+    x.globalCompositeOperation = 'copy'; x.drawImage(cv, 0, 0);
+  } else if (k === 'droste') {
+    const b = lensBuf('tmp'), x = b.getContext('2d'); x.globalCompositeOperation = 'copy'; x.drawImage(cv, 0, 0);
+    for (const s of [.42, .18]) { const w = cw * s, h = ch * s, X = (cw - w) / 2, Y = (ch - h) / 2; g.globalAlpha = .92; g.drawImage(b, X, Y, w, h); g.strokeStyle = 'rgba(236,228,214,.3)'; g.lineWidth = DPR; g.strokeRect(X, Y, w, h); }
+  } else if (k === 'focus') {
+    LENS.f = P.size ? Math.min(24, LENS.f + dt * 30) : Math.max(1, LENS.f - dt * .7);   // watched, it hides; left alone, it sharpens
+    if (LENS.f > 1.3) {
+      const w = Math.max(2, cw / LENS.f / DPR | 0), h = Math.max(2, ch / LENS.f / DPR | 0), b = lensBuf('small', w, h), x = b.getContext('2d');
+      x.drawImage(cv, 0, 0, w, h); g.imageSmoothingEnabled = false; g.drawImage(b, 0, 0, cw, ch); g.imageSmoothingEnabled = true;
+    }
+  }
+  g.restore();
+}
+// CSS-level effects: the midnight inversion, the leap-day mirror, and the cheap lenses
+function lensCSS() {
+  const f = [], tf = [];
+  if (FX.mid) f.push('invert(1) hue-rotate(180deg)');
+  if (LENS.k === 'drift') f.push(`hue-rotate(${((T - LENS.t0) * 8) % 360 | 0}deg)`);
+  if (LENS.k === 'shy' && P.size) f.push('grayscale(1)');
+  if (MIRROR) tf.push('scaleX(-1)');
+  if (LENS.k === 'sway') tf.push(`rotate(${(TILT.x * 7 + Math.sin(T * .4) * 2).toFixed(1)}deg) scale(1.15)`);
+  const fs = f.join(' '), ts = tf.join(' ');
+  if (fs !== LENS.css) { LENS.css = fs; cv.style.filter = fs; }
+  if (ts !== LENS.tf) { LENS.tf = ts; cv.style.transform = ts; }
+}
+// today the whole piece is in a slightly different key
+const KEYSHIFT = (() => { const d = new Date(), k = (d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) % 5 - 2; return Math.pow(2, k / 12); })();
+
+// ======================================================================
 // RELIQUARY — found only by someone who has found everything else. Every
 //             gold star you have kept turns slowly around you, and the
 //             ghost of your hand draws in gold.
@@ -3322,26 +4428,32 @@ if (!Array.isArray(MEM.hours) || MEM.hours.length !== 24) MEM.hours = new Array(
 const STRANGER = MEM.visits > 5 && !MEM.hours[new Date().getHours()];
 if (STRANGER) found('stranger');
 MEM.hours[new Date().getHours()]++;
+const PREV_VER = MEM.ver | 0;
+(() => { const d = new Date(), y = d.getFullYear(), doy = Math.floor((d - new Date(y, 0, 1)) / 864e5); if (!MEM.days || MEM.days.y !== y || !Array.isArray(MEM.days.list)) MEM.days = { y, list: [] }; if (!MEM.days.list.includes(doy)) MEM.days.list.push(doy); })();
 const UPDATED = MEM.visits > 1 && (MEM.ver | 0) < VERSION;   // new movements were added since this visitor's last visit
 MEM.ver = VERSION; saveMem();
 // a day that shouldn't exist: everything is mirrored
 const MIRROR = DAY.leap;
-if (MIRROR) { cv.style.transform = 'scaleX(-1)'; found('leap'); }
+if (MIRROR) found('leap');
 
 // ======================================================================
 // conductor
 // ======================================================================
 const MOVES = [Shy, Unbreaking, Cave, Asemic, Droste, Absence, Sunflower, Bodies, Butterfly, Chladni, Epicycles, Relativity, Murmur, Today, Pendulums, Skin,
-  Rings, Labyrinth, Ant, Flock, Harmonograph, Sandpile, Call, Frost, Reliquary];
-// the last one is never in the rotation: it is reached only through the corner door, once the key is complete
-const NPUB = MOVES.length - 1, RELIQ = MOVES.length - 1;
+  Rings, Labyrinth, Ant, Flock, Harmonograph, Sandpile, Call, Frost,
+  Fireflies, Mould, Ripple, Staircase, Penrose, Swing, Glass, Rivers, Deep, Aurora, Tide, Motes, Year, Crossing,
+  Reliquary, Hourglass, Once, Fullmoon];
+// the last four are never in the ordinary rotation: the reliquary is behind the corner door once the key is complete, the hourglass
+// behind a turned-over phone once the hourglass is, Once happens a single time on the tenth visit, and Fullmoon only at the full moon
+const RELIQ = MOVES.indexOf(Reliquary), HOURG = MOVES.indexOf(Hourglass), ONCE_I = MOVES.indexOf(Once), FULL_I = MOVES.indexOf(Fullmoon), NPUB = RELIQ;
+if (PREV_VER && PREV_VER < 5 && MEM.seen[24]) { MEM.seen[RELIQ] = MEM.seen[24]; MEM.seen[24] = 0; saveMem(); }
 const TITLE = 'timesbane';
 let T = 0, last = performance.now(), started = false, ign = -1;
 let cur = null, curI = -1, nextI = -1, phase = 'idle', fade = 0, mStart = 0, lastInput = 0, lastDown = { t: -9, x: 0, y: 0 };
 let order = [], oi = 0;
 function nextIdx() {
   if (oi >= order.length) {
-    const all = [...Array(NPUB).keys()];
+    const all = [...Array(NPUB).keys()]; if (FULLMOON) all.push(FULL_I);
     order = shuffle(!order.length ? all.filter(i => i !== curI) : all);
     const key = {}; for (const i of order) key[i] = (MEM.seen[i] | 0) + Math.random() * 2;
     order.sort((a, b) => key[a] - key[b]);
@@ -3352,12 +4464,14 @@ function nextIdx() {
 }
 function enterMove(i) {
   if (cur && cur.exit) cur.exit();
-  curI = i; cur = MOVES[i](); cur.enter(); mStart = T;
+  curI = i; cur = MOVES[i](); cur.enter(); mStart = T; chooseLens();
   MEM.seen[i] = (MEM.seen[i] | 0) + 1;
   document.body.classList.toggle('paper', !!cur.paper);
 }
 const HIST = [];
 function firstIdx() {
+  if (!MEM.once && MEM.visits >= 10) return ONCE_I;
+  if (FULLMOON && !MEM.seen[FULL_I]) return FULL_I;
   if (MEM.visits <= 1) return 0;
   let best = [], bv = Infinity;
   for (let i = 0; i < NPUB; i++) { const v = MEM.seen[i] | 0; if (v < bv) { bv = v; best = [i]; } else if (v === bv) best.push(i); }
@@ -3372,11 +4486,18 @@ function goBack() { if (HIST.length && phase !== 'out') go(HIST.pop(), true); }
 function randomOther() { let i; do { i = Math.random() * NPUB | 0; } while (i === curI && NPUB > 1); return i; }
 const whoosh = back => S.noise({ rev: !back, dur: .5, f: 3000, ft: 'lowpass', g: .08 });
 // hidden doors
-let swipe = null, door = null;
+let swipe = null, door = null, twist = null, keep = null;
+function turnLens() {
+  const i = LENSES.indexOf(LENS.k), k = i + 1 >= LENSES.length ? null : LENSES[i + 1];
+  setLens(k); S.note(scaleNote(67, i + 2), { g: .04, d: 1.6, wet: .8 }); buzz(8);
+  if (k) { (SESSION.turned || (SESSION.turned = new Set())).add(k); if (SESSION.turned.size >= LENSES.length) found('turn'); }
+}
+// for the app: the picture as it is now
+window.tbSnapshot = () => { try { return cv.toDataURL('image/png'); } catch (e) { return null; } };
 function begin(i) { started = true; enterMove(i); phase = 'in'; fade = 1; document.getElementById('nx').classList.add('on'); document.getElementById('sd').classList.add('on'); }
 
 const hashM = /^#m(\d{1,2})$/.exec(location.hash);
-if (hashM && (+hashM[1] < NPUB || (+hashM[1] === RELIQ && allDoable2()))) { begin(+hashM[1]); }
+if (hashM) { const h = +hashM[1]; if (h < NPUB || (h === RELIQ && allDoable2()) || (h === HOURG && allDoable3()) || (h === ONCE_I && !MEM.once) || h === FULL_I) begin(h); }
 
 function ignite() {
   if (ign >= 0 || started) return;
@@ -3453,9 +4574,12 @@ function loop(now) {
   T += dt;
   if (hasTilt) { TILT.x = lerp(TILT.x, tiltRaw.x, .08); TILT.y = lerp(TILT.y, tiltRaw.y, .08); TILT.rx = TILT.x; TILT.ry = TILT.y; }
   else if (HOVER.t > 0) { TILT.x = lerp(TILT.x, (HOVER.x / W - .5) * .8, .04); TILT.y = lerp(TILT.y, (HOVER.y / H - .5) * .8, .04); }
+  lensCSS();
   if (!started) { intro(dt); return; }
+  if (LENS.k === 'slow' && P.size) dt *= .2;   // a lens of slowed time: touch, and everything nearly stops
   cur.frame(dt);
   worldFX(dt);
+  applyLens(dt);
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
   if (phase === 'out') { fade = Math.min(1, fade + dt / 1.1); if (fade >= 1) { enterMove(nextI); phase = 'in'; } }
   else if (phase === 'in') { fade = Math.max(0, fade - dt / 1.6); if (fade <= 0) phase = 'idle'; }
@@ -3490,7 +4614,8 @@ cv.addEventListener('pointerdown', e => {
   const p = { id: e.pointerId, x: ex, y: e.clientY, px: ex, py: e.clientY, dx: 0, dy: 0, sx: ex, sy: e.clientY, t0: T, moved: 0 };
   P.set(e.pointerId, p); lastInput = T;
   if (P.size === 1) REC.start(p);
-  if (P.size === 2) { const [a, b] = [...P.values()]; swipe = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, t: T, done: false }; }
+  if (P.size === 2) { const [a, b] = [...P.values()]; swipe = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, t: T, done: false }; twist = { a: Math.atan2(b.y - a.y, b.x - a.x) }; }
+  if (P.size === 3) keep = { t: T };
   else if (P.size > 2) swipe = null;
   if (P.size === 1 && p.x < 64 && p.y < 64) door = { id: p.id, t: T };
   const dbl = T - lastDown.t < .32 && Math.hypot(p.x - lastDown.x, p.y - lastDown.y) < 50;
@@ -3505,6 +4630,10 @@ cv.addEventListener('pointermove', e => {
   p.px = p.x; p.py = p.y; p.x = MIRROR ? W - e.clientX : e.clientX; p.y = e.clientY; p.dx = p.x - p.px; p.dy = p.y - p.py;
   p.moved += Math.hypot(p.dx, p.dy); lastInput = T;
   REC.move(p);
+  if (twist && P.size === 2 && phase === 'idle' && !cur.noLens && !cur.paper) {
+    const [a, b] = [...P.values()], an = Math.atan2(b.y - a.y, b.x - a.x), da = Math.atan2(Math.sin(an - twist.a), Math.cos(an - twist.a));
+    if (Math.abs(da) > 1.1) { twist.a = an; if (swipe) swipe.done = true; turnLens(); }
+  }
   if (swipe && !swipe.done && P.size === 2 && phase === 'idle') {
     const [a, b] = [...P.values()], dx = (a.x + b.x) / 2 - swipe.x, dy = (a.y + b.y) / 2 - swipe.y;
     if (T - swipe.t < .9 && Math.abs(dx) > Math.min(W * .3, 160) && Math.abs(dx) > Math.abs(dy) * 1.5) {
@@ -3518,7 +4647,8 @@ function release(e) {
   const p = P.get(e.pointerId);
   if (!p) { if (!started && e.type === 'pointerup') ignite(); return; }
   P.delete(e.pointerId); lastInput = T;
-  if (P.size < 2) swipe = null;
+  if (P.size < 2) { swipe = null; twist = null; }
+  if (keep && !P.size) { if (T - keep.t < .8 && window.tbKeep) window.tbKeep(); keep = null; }
   REC.end(p);
   if (cur && cur.up) cur.up(p);
 }
