@@ -381,6 +381,17 @@ const S = {
     bus.gain.setTargetAtTime(1, c.currentTime, .8);
     return { stop() { const t = c.currentTime; bus.gain.setTargetAtTime(0, t, .4); os.forEach(o => o.stop(t + 2.5)); } };
   },
+  // After the phone has been away (another app, a call, the lock screen) the audio engine can come back
+  // suspended or broken. Ask it to resume; if it isn't cleanly running a moment later, build a new one.
+  // force: always rebuild (the iPhone app does this on every return, since resuming there is unreliable).
+  revive(force) {
+    const c = this.c; if (!c) return;
+    const rebuild = () => { if (this.c !== c) return; this.c = null; this.n = 0; this._h = false; try { c.close(); } catch (e) {} this.init(); };
+    if (force) return rebuild();
+    if (c.state === 'running') return;
+    try { c.resume().catch(() => {}); } catch (e) {}
+    setTimeout(() => { if (this.c === c && c.state !== 'running') rebuild(); }, 700);
+  },
   toggle() { this.on = !this.on; if (this.c) this.out.gain.setTargetAtTime(this.on ? .85 : 0, this.c.currentTime, .2); return this.on; }
 };
 
@@ -4658,7 +4669,7 @@ cv.addEventListener('pointerup', release);
 cv.addEventListener('pointercancel', release);
 addEventListener('contextmenu', e => e.preventDefault());
 // some browsers only unlock audio on a full click / touchend
-const unlock = () => { if (started || ign >= 0) S.init(); };
+const unlock = () => { if (started || ign >= 0) { S.init(); if (S.c && S.c.state !== 'running') S.revive(); } };
 addEventListener('touchend', unlock, { passive: true });
 addEventListener('click', unlock);
 addEventListener('keydown', e => { if (!started && (e.key === 'Enter' || e.key === ' ')) ignite(); });
@@ -4679,7 +4690,7 @@ document.addEventListener('visibilitychange', () => {
   else {
     const away = (Date.now() - hiddenAt) / 1000;
     document.title = TITLE;
-    if (S.c && S.c.state !== 'running') S.c.resume();
+    S.revive(!!window.tbNative && away > 1);
     last = performance.now();
     if (started && cur && cur.away) cur.away(away);
   }

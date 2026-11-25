@@ -38,6 +38,22 @@ addEventListener('pagehide', flush);
 export const ready = loadMemory();
 export function started() { isStarted = true; }
 
+// ---------- sound with the silent switch on ----------
+// iOS's web view gives web audio its own "ambient" category, which the silent switch mutes, whatever the
+// app's own audio session says. Asking for "playback" makes it play like a video (iOS 16.4+). Older
+// systems get the same category from a silent looping clip started on the first touch.
+window.tbNative = true;
+const playback = () => { try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {} };
+playback();
+if (!navigator.audioSession) {
+  const quiet = new Audio('data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==');
+  quiet.loop = true; quiet.setAttribute('playsinline', '');
+  const start = () => { quiet.play().catch(() => {}); };
+  addEventListener('pointerdown', start, { once: true, capture: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) start(); });
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) playback(); });
+
 // ---------- haptics and battery ----------
 window.tbHaptic = (p) => { N.haptic({ pattern: Array.isArray(p) ? p : [p] }).catch(() => {}); };
 const battery = ({ level, charging }) => { if (window.tbSetBattery && typeof level === 'number' && level >= 0) window.tbSetBattery(level, !!charging); };

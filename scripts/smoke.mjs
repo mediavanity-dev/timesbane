@@ -101,8 +101,12 @@ const shot = async (page, name) => out && page.screenshot({ path: join(out, `${n
   assert.ok(await page.evaluate(() => window.__calls.some(([n, a]) => n === 'haptic' && a.pattern.length === 3)), 'haptic not sent');
   await sleep(2000);
   assert.deepEqual(await page.evaluate(() => [BAT && BAT.level, BAT && BAT.charging]), [.9, true], 'battery not passed to the piece');
+  // coming back from another app: the app always rebuilds the sound engine, which keeps playing
+  const revived = await page.evaluate(async () => { const before = S.c; document.dispatchEvent(new Event('visibilitychange')); S.revive(true); await new Promise((r) => setTimeout(r, 300)); return { tbNative: window.tbNative, fresh: S.c !== before && !!S.c, drone: !!S.dv }; });
+  assert.deepEqual(revived, { tbNative: true, fresh: true, drone: true }, 'sound engine not rebuilt after returning');
+  await page.evaluate(() => S.note(440, { g: .05 }));
   assert.deepEqual(errors, []);
-  console.log('2 first launch: memory copied into the file; haptics and battery: ok');
+  console.log('2 first launch: memory copied into the file; haptics, battery and sound rebuilt on return: ok');
   await context.close();
 }
 
