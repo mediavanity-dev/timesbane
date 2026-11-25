@@ -90,7 +90,7 @@ const shot = async (page, name) => out && page.screenshot({ path: join(out, `${n
 // 2. App, first launch: web storage from the website era is carried into the file
 {
   const old = JSON.stringify({ visits: 3, first: Date.now() - 9e8, seen: [], strokes: [], found: { wink: 1 } });
-  const { page, context, errors } = await open({ native: true, storage: old, file: null });
+  const { page, context, errors, remote } = await open({ native: true, storage: old, file: null });
   assert.equal(await memVisits(page), 4);
   await begin(page);
   await page.waitForFunction(() => window.__calls.some(([n]) => n === 'writeFile'), null, { timeout: 8000 });
@@ -106,6 +106,8 @@ const shot = async (page, name) => out && page.screenshot({ path: join(out, `${n
   assert.deepEqual(revived, { tbNative: true, fresh: true, drone: true }, 'sound engine not rebuilt after returning');
   await page.evaluate(() => S.note(440, { g: .05 }));
   assert.deepEqual(errors, []);
+  await page.evaluate(() => fetchPlace());
+  assert.ok(!remote.some((u) => /open-meteo|inaturalist|random.org/.test(u)), 'the app called a non-commercial source: ' + remote.filter((u) => /open-meteo|inaturalist|random/.test(u)).join(' '));
   console.log('2 first launch: memory copied into the file; haptics, battery and sound rebuilt on return: ok');
   await context.close();
 }

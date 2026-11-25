@@ -16,7 +16,7 @@ const must = (t, n, w) => { if (!t.includes(n)) throw new Error(`${w}: expected 
 
 edit('App/Info.plist', (pl) => {
   const keys = [
-    ['NSLocationWhenInUseUsageDescription', 'Only if you ask for it, inside the piece: your place, rounded to about 10 km, puts the real sky, sun and weather over you. It is never stored.'],
+    ['NSLocationWhenInUseUsageDescription', 'Only if you ask for it, inside the piece: your place puts the real sky, Sun and Moon over you. It stays on this device and is never stored.'],
     ['NSPhotoLibraryAddUsageDescription', 'To save a moment you choose to keep to your photos.'],
   ];
   for (const [k, v] of keys) if (!pl.includes(k)) pl = pl.replace('\t<key>LSRequiresIPhoneOS</key>', `\t<key>${k}</key>\n\t<string>${v}</string>\n\t<key>LSRequiresIPhoneOS</key>`);

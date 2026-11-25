@@ -1,0 +1,9 @@
+Art in Nature is a wordless, interactive generative artwork (also at timesbane.com). There is no account or sign-in and no text by design.
+
+How to use it: tap the breathing dot to begin. Each "movement" drifts into the next after a minute or two; the turning mark in the bottom-right corner skips to the next one. Touch, drag, hold, double-tap, tilt and shake all do something in each movement.
+
+Patron (one-time non-consumable, Family Sharing on): press and hold the turning mark in the bottom-right corner for about one second to open the Patron page (price, what it adds, Restore it). A three-finger tap also opens it for non-patrons. Patrons get: three-finger tap saves the current picture through the share sheet; while charging, the screen stays awake. Everything else is free.
+
+Widgets: Today, Year, Moon, Tree (Home Screen and StandBy).
+
+Location is asked for only if the user double-taps inside the "Absence" movement (a tree under the night sky); it is used on the device to draw the real sky and is never sent. Motion data (tilt, shake) is used on the device only. The app fetches public live data (NOAA, USGS, NASA, Wikimedia, etc.) with no personal information.

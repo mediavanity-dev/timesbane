@@ -2208,6 +2208,8 @@ function poll(name, url, every, use) {
 // Weather and nature use the place: the timezone's city, or (opt-in) the device, rounded to ~10 km.
 const GEO = () => (CTX.tzCity || !CTX.approx) ? [Math.round(CTX.lat * 10) / 10, Math.round(CTX.lon * 10) / 10] : null;
 function fetchPlace() {
+  // the iPhone app leaves out the sources whose free terms are non-commercial (Open-Meteo, iNaturalist)
+  if (window.tbNative) return;
   const geo = GEO(); if (!geo) return;
   const [la, lo] = geo, q = `latitude=${la}&longitude=${lo}`, gk = (CTX.approx ? 'tz' : 'gps') + '.' + la + '.' + lo, d = new Date();
   cached('wx.' + gk, 30, `https://api.open-meteo.com/v1/forecast?${q}&current=temperature_2m,precipitation,snowfall,weather_code,cloud_cover,wind_speed_10m&daily=temperature_2m_mean&timezone=auto&forecast_days=1`, j => {
@@ -2266,7 +2268,7 @@ function fetchWorld() {
   if (CTX.country === 'GB') cached('carbon', 30, 'https://api.carbonintensity.org.uk/intensity', j => {
     const r = j.data && j.data[0] && j.data[0].intensity; return r ? r.index : null;
   }).then(v => { if (v) LIVE.carbon = v; });
-  getJSON('https://www.random.org/integers/?num=1&min=1&max=1000000000&col=1&base=10&format=plain&rnd=new', true).then(t => { const n = parseInt(t, 10); if (n > 0) LIVE.rnd = n; });
+  if (!window.tbNative) getJSON('https://www.random.org/integers/?num=1&min=1&max=1000000000&col=1&base=10&format=plain&rnd=new', true).then(t => { const n = parseInt(t, 10); if (n > 0) LIVE.rnd = n; });
   if (CTX.country) cached('hol.' + CTX.country + '.' + y, 7 * 24 * 60, `https://date.nager.at/api/v3/PublicHolidays/${y}/${CTX.country}`,
     j => Array.isArray(j) ? j.map(h => [h.date, h.name, h.counties, h.global]) : null).then(list => {
       const today = iso(d);

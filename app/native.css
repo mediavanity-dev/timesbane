@@ -18,3 +18,4 @@
 .tb-card button:focus-visible { outline: 2px solid #ffcf6b; outline-offset: 2px; }
 .tb-flash { position: fixed; inset: 0; z-index: 11; background: #f3ebdf; opacity: .85; pointer-events: none; transition: opacity .6s ease; }
 .tb-flash.go { opacity: 0; }
+.tb-credits { margin: 28px 0 0; font-size: 12px; line-height: 1.5; color: rgba(236, 228, 214, .45); }

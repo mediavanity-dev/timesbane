@@ -1,0 +1,7 @@
+:root{color-scheme:dark}
+html{background:#050407}body{margin:0;font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#ece4d6;background:#050407}
+main{max-width:720px;margin:0 auto;padding:44px 20px 64px}
+.eyebrow{margin:0 0 4px;color:#ff6a4d;font-weight:600;font-size:15px;letter-spacing:.02em}
+h1{margin:0 0 16px;font:italic 500 40px/1.1 "Cormorant Garamond",Georgia,serif;color:#f3ebdf}
+h2{margin:36px 0 8px;font-size:21px;color:#f3ebdf}h3{margin:22px 0 4px;font-size:17px;color:#f3ebdf}
+p,li{color:rgba(236,228,214,.86)}a{color:#ffcf6b}.date,.foot{color:rgba(236,228,214,.55);font-size:15px}.foot{margin-top:48px}

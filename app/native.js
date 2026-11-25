@@ -98,6 +98,7 @@ function render(note = '') {
     card.append(buy, later, restore);
   }
   const n = el('p', 'tb-note', note); n.setAttribute('aria-live', 'polite'); card.append(n);
+  card.append(el('p', 'tb-credits', 'Live data, used as it happens and never kept: NOAA Space Weather Prediction Center, USGS earthquakes, NASA near-Earth objects, Wikimedia EventStreams, the Art Institute of Chicago, Nager.Date holidays, wheretheiss.at, mempool.space, global-warming.org, and in Great Britain the Carbon Intensity API (National Grid ESO, CC BY 4.0).'));
 }
 
 async function purchase(btn) {

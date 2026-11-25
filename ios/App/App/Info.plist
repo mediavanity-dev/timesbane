@@ -25,7 +25,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Only if you ask for it, inside the piece: your place, rounded to about 10 km, puts the real sky, sun and weather over you. It is never stored.</string>
+	<string>Only if you ask for it, inside the piece: your place puts the real sky, Sun and Moon over you. It stays on this device and is never stored.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>To save a moment you choose to keep to your photos.</string>
 	<key>UIStatusBarHidden</key>
