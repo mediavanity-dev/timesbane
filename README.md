@@ -17,7 +17,7 @@ The opening also reflects your history:
 
 ## The movements
 
-Thirty-eight movements drift into one another on their own. Add `#m0` to `#m37` to the URL to open one directly. Four more are hidden or rare (see *Secrets*): the Reliquary (`#m38`), the Hourglass (`#m39`), Once (`#m40`) and the Full Moon (`#m41`).
+Forty-eight movements drift into one another on their own. Add `#m0` to `#m47` to the URL to open one directly. Four more are hidden or rare (see *Secrets*): the Reliquary (`#m48`), the Hourglass (`#m49`), Once (`#m50`) and the Full Moon (`#m51`). From Ink on, each movement takes one of twelve palettes (or its own) and its own form for the visit, and they unfold over two minutes or more.
 
 | # | Movement | Idea | What happens and what you can do |
 |---|---|---|---|
@@ -59,6 +59,16 @@ Thirty-eight movements drift into one another on their own. Add `#m0` to `#m37` 
 | 35 | Motes | Dust in a beam of light | A beam comes in at the angle of the real Sun (or pale from the Moon, or warm from a lamp at night). Fan the air with your finger; tilt is a draught; shake stirs everything. One mote is gold |
 | 36 | Year | Slow time, shared by everyone | Every day of this year on one spiral, each dot sized by how long its daylight is where you are. The past is pale, the future faint, today glows, and the days you came are gold. It takes a real year to finish, for everyone at once. Drag across the days to hear their light: longer days sound higher |
 | 37 | Crossing | Two at once | Two lighter movements run together, one seen through the other, and both answer your touch. A different pair each visit |
+| 38 | Ink | Marbling (ebru, suminagashi) | Ink dropped on water and combed, on paper. Each drop pushes all the ink before it outward, keeping its area; each comb drags it along (the mathematics of Jaffer and Lu). An unseen hand makes bullseyes, scattered drops, combs, waves and swirls in a different order each visit; after about two minutes the paper is lifted and a new sheet laid down. Tap to drop ink, hold to drop ring after ring, drag to comb, double-tap to swirl, shake for a new sheet |
+| 39 | Jelly | Bioluminescence | Jellyfish pulse slowly upward with trailing tentacles, through marine snow and shafts of light. Over two and a half minutes the water darkens as if you were sinking, and they glow brighter. Touch one and it lights; drag to push them; shake and they all flash |
+| 40 | Silk | Threads on a current | Hundreds of threads of light carried by a slowly changing current (a curl of noise), woven over each other until the screen is cloth; the colours rotate every forty-five seconds. Your finger is an eddy and hums as it moves; double-tap thins the weave |
+| 41 | Leaf | How veins grow (space colonisation) | A leaf of a new shape each visit (oval, lance, heart or lobed, in your season's colours) grows while its veins grow inside it toward the places that need water, each as thick as the veins it feeds. It ripens, turns, falls, and another begins. Hold it to the light: the veins glow where your finger is. Tap to make it grow there; shake and it falls |
+| 42 | Meadow | A life cycle | Three kinds of flower, invented for the visit, sprout, open, blaze, wilt and go to seed, and the seeds blow away. Pollen drifts; real wind sways them. Drag to send a gust; shake and they go to seed |
+| 43 | Sky | A day | A whole day over the hills in two and a half minutes, starting from your own hour, with the real length of your day for your latitude and season: dawn, noon, the golden hour, dusk and stars, clouds lit by the hour (as many as the real cloud cover), birds at dawn and crickets at night. Drag sideways to move through time |
+| 44 | Dunes | Wind on sand | A dune field from above, migrating downwind, with grains lifted off the crests; a low sun crosses the sky so every shadow turns. Drag to turn the wind; shake for a sandstorm |
+| 45 | Kelp | A kelp forest | Buoyant kelp held at the root sways in the swell; light ripples over the sand below (caustics); a silver shoal turns as one; plankton rises. Push the water with your finger; shake scatters the shoal |
+| 46 | Storm | Lightning (and Lichtenberg figures) | Lightning feels its way down in steps and branches, then the return stroke floods the sky, with thunder a moment later. Each strike burns a little more of a branching figure into the dark. Tap to call a strike there; hold to gather charge for a bigger one. Real storms bring more |
+| 47 | Galaxy | Density waves | A spiral galaxy of thousands of stars, each on its own ellipse, each ellipse turned a little more the further out it is, so the arms are only where orbits crowd together, and still they last. Two, three or four arms, sometimes a bar. It tilts slowly; drag to tilt and turn it; tap for a supernova |
 
 ## Lenses, crossings and the key of the day
 
@@ -325,6 +335,10 @@ The newest movements have a third constellation, below the key: an hourglass. Co
 | Relativity | At the real top of the hour, the clocks strike the hour together and resynchronise | The clock |
 | Everywhere | A public holiday where you live | The calendar |
 | Everywhere | Every lens seen at least once | Time |
+| Ink | Drop, comb and swirl in one visit | You |
+| Jelly, Silk, Leaf, Sky | Sink to the bottom; watch the weave three minutes; see a leaf fall; watch a whole day | Patience |
+| Meadow | Twenty-five flowers in bloom at once | Luck |
+| Storm, Galaxy | Call down lightning; set off a supernova | You |
 | Aurora | A real geomagnetic storm (Kp 5 or more) | The Sun |
 | Crossing | The first crossing | Luck |
 | Full Moon, Once, Hourglass | Being there | The Moon; your tenth visit; the hourglass |
@@ -378,6 +392,16 @@ The tab title is "timesbane" while you watch. When you switch tabs it changes to
 | Motes | the dust is still turning |
 | Year | the year is still turning |
 | Crossing | two things are happening at once |
+| Ink | the ink is still moving |
+| Jelly | they are still rising |
+| Silk | it is still weaving |
+| Leaf | it is still growing veins |
+| Meadow | it is going to seed |
+| Sky | the day is still turning |
+| Dunes | the dunes are still moving |
+| Kelp | the forest is still swaying |
+| Storm | the storm is still here |
+| Galaxy | it is still turning |
 | Reliquary | everything you found |
 | Hourglass | it is still running |
 | Once | this will not happen again |

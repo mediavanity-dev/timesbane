@@ -2049,7 +2049,7 @@ const KEYS = { shift: false };
 // and a few live signals from the planet. Every source is optional: if
 // it is missing, slow or offline, nothing happens and the piece goes on.
 // ======================================================================
-const VERSION = 5;
+const VERSION = 6;
 const DESK = (() => { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { return false; } })();
 
 // --- what the timezone says about where you are: [country, lat, lon, region] ---
@@ -3853,72 +3853,116 @@ function Rivers() {
 
 // ======================================================================
 // XXXIII. DEEP — the Mandelbrot set: one line of arithmetic, and a
-//         coastline with no bottom. It sinks slowly by itself; touch to
-//         steer, double-tap to rise. There is a floor, very far down.
+//         coastline with no bottom. It sinks slowly by itself; tap to
+//         steer, drag to look around, double-tap to rise. There is a
+//         floor, very far down.
 // ======================================================================
+// The pictures are computed on a background thread, a little ahead of the dive: while you sink toward one
+// crisp picture, the next (twice as deep) is already being made, so the dive never shows a half-drawn frame.
+const DEEP_WORKER = `onmessage = e => {
+  const { id, w, h, cx, cy, sc, it, ph, pal } = e.data, np = pal.length, buf = new Uint8ClampedArray(w * h * 4), s2 = sc * 2 / h, eps = s2 * 1e-6, TAU = Math.PI * 2;
+  let inside = 0;
+  for (let j = 0; j < h; j++) {
+    const y0 = cy + (j - h / 2) * s2;
+    for (let i = 0; i < w; i++) {
+      const x0 = cx + (i - w / 2) * s2, o = (j * w + i) * 4;
+      const q = (x0 - .25) * (x0 - .25) + y0 * y0;
+      let inS = q * (q + (x0 - .25)) <= .25 * y0 * y0 || (x0 + 1) * (x0 + 1) + y0 * y0 <= .0625;
+      let n = 0, x = 0, y = 0, xx = 0, yy = 0;
+      if (!inS) {
+        let px = 0, py = 0, per = 0, lim = 8;
+        while (n < it && xx + yy < 256) {
+          y = 2 * x * y + y0; x = xx - yy + x0; xx = x * x; yy = y * y; n++;
+          if (Math.abs(x - px) + Math.abs(y - py) < eps) { n = it; break; }   // the orbit has come round again: inside
+          if (++per > lim) { per = 0; lim *= 2; px = x; py = y; }
+        }
+        if (n >= it) inS = true;
+      }
+      if (inS) { buf[o] = 5; buf[o + 1] = 4; buf[o + 2] = 7; inside++; }
+      else {
+        const sm = Math.max(0, n + 1 - Math.log2(Math.log2(xx + yy) / 2)), t = (Math.sqrt(sm) * .55 + ph[0] * np) % np, k0 = t | 0, f = t - k0, u = f * f * (3 - 2 * f), a = pal[k0], b = pal[(k0 + 1) % np], lv = Math.min(1, Math.max(.05, sm / 22));
+        buf[o] = lv * (a[0] + (b[0] - a[0]) * u); buf[o + 1] = lv * (a[1] + (b[1] - a[1]) * u); buf[o + 2] = lv * (a[2] + (b[2] - a[2]) * u);
+      }
+      buf[o + 3] = 255;
+    }
+  }
+  postMessage({ id, buf, inside: inside / (w * h) }, [buf.buffer]);
+};`;
 function Deep() {
   const SPOTS = [[-.743643887037151, .13182590420533], [-.7453, .1127], [-1.25066, .02012], [-.16070135, 1.0375665], [.001643721971153, -.822467633298876],
-    [-1.768778833, -.001738996], [-.761574, -.0847596], [.27322626, .595153338], [-.10109636384562, .95628651080914], [-1.9408, 0]];
-  const R = seedNow(8191), ph = [R(), R(), R()], spot = SPOTS[R() * SPOTS.length | 0];
-  let cx = -.6, cy = 0, sc = 1.4, tx = spot[0], ty = spot[1], div = 1, rs = 3, sw, sh, work, wx, wimg, row = 0, wv = null, done, dv = null, boundary = .5, lastDrone = 0, floorT = 0;
-  function setup() {
-    rs = DESK ? 3 : 3; sw = Math.ceil(W / rs); sh = Math.ceil(H / rs);
-    work = mk(sw, sh); wx = work.getContext('2d'); wimg = wx.createImageData(sw, sh); done = mk(sw, sh); dv = null; start();
+    [-1.768778833, -.001738996], [-.761574, -.0847596], [.27322626, .595153338], [-.10109636384562, .95628651080914], [-1.940157343, -.0000001], [-.7746806106269039, -.1374168856037867], [.4245127190, .2075302281]];
+  const R = seedNow(8191);
+  let ph = [R(), R(), R()], pal = (() => { const p = pickPal(R); return [[6, 5, 10], p[0], p[1], [10, 8, 14], p[2], p[3], p[4]]; })(), worker = null, reqs = new Map(), nid = 0, rw, rh;
+  let tx, ty, vx, vy, s, zr = .32, base = null, next = null, fresh = null, freshK = 0, drag = null, floorT = 0, lastDrone = 0, boundary = .5, ring = null;
+  const maxIt = sc => Math.min(2400, 220 + Math.round(95 * Math.log10(1.6 / sc)));
+  function render(cx, cy, sc) {
+    const id = ++nid, job = { cx, cy, sc, canvas: null, inside: .5 };
+    reqs.set(id, job);
+    const msg = { id, w: rw, h: rh, cx, cy, sc, it: maxIt(sc), ph, pal };
+    if (worker) worker.postMessage(msg);
+    else setTimeout(() => { const c = mk(rw, rh); job.canvas = c; }, 0);
+    return job;
   }
-  function start() { wv = { cx, cy, sc, it: Math.min(1600, 140 + Math.round(70 * Math.log10(1.4 / sc))) }; row = 0; wv.inside = 0; wv.esc = 0; }
-  function render(budget) {
-    const t0 = performance.now(), D = wimg.data, asp = sw / sh, { it } = wv, s2 = wv.sc * 2 / sh;
-    while (row < sh && performance.now() - t0 < budget) {
-      const y0 = wv.cy + (row - sh / 2) * s2;
-      for (let col = 0; col < sw; col++) {
-        const x0 = wv.cx + (col - sw / 2) * s2; let x = 0, y = 0, xx = 0, yy = 0, n = 0;
-        while (n < it && xx + yy < 256) { y = 2 * x * y + y0; x = xx - yy + x0; xx = x * x; yy = y * y; n++; }
-        const o = (row * sw + col) * 4;
-        if (n >= it) { D[o] = 5; D[o + 1] = 4; D[o + 2] = 7; wv.inside++; }
-        else {
-          const sm = Math.max(0, n + 1 - Math.log2(Math.log2(xx + yy) / 2)), t = Math.sqrt(sm) * .21, lv = clamp(sm / 14, .08, 1); wv.esc++;
-          D[o] = lv * (128 + 127 * Math.cos(TAU * (t + ph[0]))); D[o + 1] = lv * (110 + 110 * Math.cos(TAU * (t * 1.1 + ph[1]))); D[o + 2] = lv * (120 + 120 * Math.cos(TAU * (t * .9 + ph[2])));
-        }
-        D[o + 3] = 255;
-      }
-      row++;
+  function setup() {
+    const q = Math.min(Math.max(1, DPR), Math.sqrt((DESK ? 1.1e6 : 6.5e5) / Math.max(1, W * H)));
+    rw = Math.max(64, Math.round(W * q)); rh = Math.max(64, Math.round(H * q));
+    if (!worker) {
+      try {
+        worker = new Worker(URL.createObjectURL(new Blob([DEEP_WORKER], { type: 'text/javascript' })));
+        worker.onmessage = e => {
+          const job = reqs.get(e.data.id); if (!job) return; reqs.delete(e.data.id);
+          const c = mk(rw, rh), x = c.getContext('2d'), img = x.createImageData(rw, rh); img.data.set(e.data.buf); x.putImageData(img, 0, 0);
+          job.canvas = c; job.inside = e.data.inside;
+        };
+      } catch (er) { worker = null; }
     }
-    if (row >= sh) {
-      wx.putImageData(wimg, 0, 0); done.getContext('2d').drawImage(work, 0, 0); dv = wv;
-      boundary = wv.inside / (sw * sh);
-      if (dv.sc < 1e-9 && boundary > .03 && boundary < .97 && found('depth')) S.bell(mtof(38), 0, 1);
-      start();
-    }
+  }
+  function spot(i) { const p = SPOTS[i]; tx = p[0]; ty = p[1]; }
+  function adopt(job) { base = job; vx = job.cx; vy = job.cy; s = Math.min(s, job.sc); next = render(vx, vy, job.sc / 2); }
+  function restart(cx, cy, sc) { reqs.clear(); vx = cx; vy = cy; base = render(cx, cy, sc); next = render(cx, cy, sc / 2); }
+  // where a picture made for view v lands on screen for the current view
+  function place(job, cx, cy) {
+    const k = job.sc / s, px = H / (2 * s);
+    return [W / 2 + (job.cx - cx) * px - W * k / 2, H / 2 + (job.cy - cy) * px - H * k / 2, W * k, H * k];
   }
   return {
-    dur: 90, hiddenTitle: 'it is still sinking',
-    enter() { setup(); S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .2, 500); },
-    resize() { setup(); },
+    dur: 120, hiddenTitle: 'it is still sinking',
+    enter() { setup(); spot(R() * SPOTS.length | 0); s = 1.3; restart(tx, ty, s); S.drone([mtof(38), mtof(45), mtof(50), mtof(57)], .2, 500); },
+    exit() { if (worker) worker.terminate(); worker = null; },
+    resize() { setup(); restart(tx, ty, s); },
+    down(p) { drag = { p, x: p.x, y: p.y }; },
     up(p) {
-      if (p.moved > 12) return;
-      const s2 = sc * 2 / H; tx = cx + (p.x - W / 2) * s2; ty = cy + (p.y - H / 2) * s2; div = 1;
-      S.note(scaleNote(50, Math.round(-Math.log10(sc)) % 15), { g: .05, d: 1.8 });
+      const d = drag; drag = null; if (!d) return;
+      const px = 2 * s / H;
+      if (p.moved > 12) { tx = vx - (p.x - d.x) * px; ty = vy - (p.y - d.y) * px; fresh = render(tx, ty, s); freshK = 0; return; }
+      // steer: the dive now heads for the point you touched
+      tx = vx + (p.x - W / 2) * px; ty = vy + (p.y - H / 2) * px; fresh = render(tx, ty, s); freshK = 0; ring = { x: p.x, y: p.y, t: 0 };
+      S.note(scaleNote(50, Math.round(-Math.log10(s)) % 15), { g: .05, d: 1.8 });
     },
-    move(p) { const s2 = sc * 2 / H; tx -= p.dx * s2; ty -= p.dy * s2; cx -= p.dx * s2; cy -= p.dy * s2; },
-    dbl() { sc = Math.min(1.6, sc * 30); div = -1; },
-    wheel(d) { sc = clamp(sc * Math.exp(d * .003), 5e-14, 1.6); },
-    shake() { const s = SPOTS[Math.random() * SPOTS.length | 0]; tx = s[0]; ty = s[1]; sc = 1.4; cx = -.6; cy = 0; div = 1; },
+    dbl() { fresh = render(vx, vy, Math.min(1.6, s * 16)); freshK = 0; S.note(mtof(45), { g: .05, d: 1.5, glide: .7 }); },
+    wheel(d) { if (d > 0) { s = Math.min(1.6, s * 1.3); fresh = render(vx, vy, s); freshK = 0; } else zr = clamp(zr + .05, .1, 1.2); },
+    shake() { spot(Math.random() * SPOTS.length | 0); fresh = render(tx, ty, 1.3); freshK = 0; },
     frame(dt) {
-      // sink toward the target; at the floor of what numbers can hold, drift back up
-      if (sc < 3e-13) floorT += dt; else floorT = Math.max(0, floorT - dt);
-      if (floorT > 4) div = -1;
-      if (div < 0 && sc > .5) div = 1;
-      sc = clamp(sc * Math.exp(-dt * (P.size ? .55 : .22) * div), 2e-13, 1.6);
-      cx = lerp(cx, tx, Math.min(1, dt * .8)); cy = lerp(cy, ty, Math.min(1, dt * .8));
-      if (dv && dv.sc / sc > 2.5) start();   // the picture in progress is already too far behind: begin again
-      render(DESK ? 9 : 7);
-      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
-      g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
-      if (dv) {   // the last finished picture, moved and scaled to where the view is now
-        const k = dv.sc / sc, s2 = sc * 2 / H, ox = W / 2 + (dv.cx - cx) / s2, oy = H / 2 + (dv.cy - cy) / s2;
-        g.drawImage(done, ox - W / 2 * k, oy - H / 2 * k, sw * rs * k, sh * rs * k);
+      // a fresh picture (after steering, looking around or rising) fades in and becomes the new start of the dive
+      if (fresh && fresh.canvas) { freshK += dt * 2.5; if (freshK >= 1) { const f = fresh; fresh = null; s = f.sc; adopt(f); } }
+      // sink, but never past a picture that isn't ready yet
+      const rate = (P.size && !drag?.p.moved ? .75 : zr) * (fresh ? 0 : 1);
+      if (s < 2.5e-13) floorT += dt; else floorT = Math.max(0, floorT - dt);
+      if (floorT > 5) { floorT = 0; spot(Math.random() * SPOTS.length | 0); fresh = render(tx, ty, 1.3); freshK = 0; }
+      if (base && next && base.canvas) {
+        let ns = s * Math.exp(-rate * dt);
+        if (ns < next.sc) { if (next.canvas && next.sc > 2.5e-13) { boundary = next.inside; adopt(next); } else ns = next.sc; }
+        s = ns;
       }
-      if (T - lastDrone > 4) { lastDrone = T; const dpt = clamp(-Math.log10(sc), 0, 13); S.drone([mtof(50 - dpt * 1.5), mtof(57 - dpt * 1.5), mtof(62 - dpt), mtof(69 - dpt)], .18, 500 + boundary * 800); }
+      if (boundary > .03 && boundary < .97 && s < 1e-9 && found('depth')) S.bell(mtof(38), 0, 1);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      const ox = drag && drag.p.moved > 12 ? (drag.p.x - drag.x) : 0, oy = drag && drag.p.moved > 12 ? (drag.p.y - drag.y) : 0, ccx = vx - ox * 2 * s / H, ccy = vy - oy * 2 * s / H;
+      g.imageSmoothingEnabled = true;
+      if (base && base.canvas) { const r = place(base, ccx, ccy); g.drawImage(base.canvas, r[0], r[1], r[2], r[3]); }
+      if (next && next.canvas && base) { const k = clamp((base.sc / s - 1) * 2, 0, 1); g.globalAlpha = k; const r = place(next, ccx, ccy); g.drawImage(next.canvas, r[0], r[1], r[2], r[3]); g.globalAlpha = 1; }
+      if (fresh && fresh.canvas) { g.globalAlpha = Math.min(1, freshK); const r = place(fresh, ccx, ccy); g.drawImage(fresh.canvas, r[0], r[1], r[2], r[3]); g.globalAlpha = 1; }
+      if (ring) { ring.t += dt; if (ring.t > 1.2) ring = null; else { g.strokeStyle = `rgba(236,228,214,${.5 * (1 - ring.t / 1.2)})`; g.lineWidth = 1; g.beginPath(); g.arc(ring.x, ring.y, 6 + ring.t * 30, 0, TAU); g.stroke(); } }
+      if (T - lastDrone > 4) { lastDrone = T; const dpt = clamp(-Math.log10(s), 0, 13); S.drone([mtof(50 - dpt * 1.5), mtof(57 - dpt * 1.5), mtof(62 - dpt), mtof(69 - dpt)], .18, 500 + boundary * 800); }
     }
   };
 }
@@ -4162,7 +4206,7 @@ function Year() {
 // ======================================================================
 function withG(ctx, fn) { const keep = g; g = ctx; try { return fn(); } finally { g = keep; } }
 function Crossing() {
-  const LIGHT = [Shy, Sunflower, Bodies, Butterfly, Epicycles, Pendulums, Flock, Harmonograph, Call, Fireflies, Aurora, Motes, Murmur, Rings, Staircase, Swing, Year, Penrose];
+  const LIGHT = [Shy, Sunflower, Bodies, Butterfly, Epicycles, Pendulums, Flock, Harmonograph, Call, Fireflies, Aurora, Motes, Murmur, Rings, Staircase, Swing, Year, Penrose, Silk, Galaxy, Jelly, Storm];
   const R = rng((MEM.visits * 131 + (Date.now() / 6e4 | 0)) | 0), ai = R() * LIGHT.length | 0; let bi = R() * (LIGHT.length - 1) | 0; if (bi >= ai) bi++;
   let A = null, B = null, off = null, ox = null;
   function surface() { off = mk(cv.width, cv.height); ox = off.getContext('2d'); ox.setTransform(DPR, 0, 0, DPR, 0, 0); }
@@ -4392,6 +4436,688 @@ function lensCSS() {
 const KEYSHIFT = (() => { const d = new Date(), k = (d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) % 5 - 2; return Math.pow(2, k / 12); })();
 
 // ======================================================================
+// palettes for the later movements: a different one most visits
+// ======================================================================
+const PALETTES = [
+  ['#f2c9a0', '#e07a5f', '#81b29a', '#f4f1de', '#3d405b'],   // dusk garden
+  ['#ffd6a5', '#ff9f80', '#c86b98', '#6d5a96', '#2b3a67'],   // evening
+  ['#d8f3dc', '#95d5b2', '#52b788', '#2d6a4f', '#ffe8a3'],   // moss
+  ['#caf0f8', '#90e0ef', '#00b4d8', '#0077b6', '#ffd166'],   // sea glass
+  ['#ffcf6b', '#ff6a4d', '#ece4d6', '#8a5a44', '#c2a878'],   // ember
+  ['#e9d8a6', '#ee9b00', '#ca6702', '#bb3e03', '#94d2bd'],   // ochre
+  ['#f7d1cd', '#e8c2ca', '#d1b3c4', '#b392ac', '#735d78'],   // orchid
+  ['#e0fbfc', '#c2dfe3', '#9db4c0', '#5c6b73', '#ffb4a2'],   // glacier
+  ['#fefae0', '#dda15e', '#bc6c25', '#606c38', '#a3b18a'],   // meadow
+  ['#ffe5ec', '#ffb3c6', '#fb6f92', '#c9184a', '#ffd6a5'],   // blossom
+  ['#bde0fe', '#a2d2ff', '#cdb4db', '#ffc8dd', '#fff1c1'],   // morning
+  ['#f8f9fa', '#ced4da', '#ffcf6b', '#adb5bd', '#e9c46a'],   // silver and gold
+];
+const rgbOf = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+const pickPal = R => PALETTES[R() * PALETTES.length | 0].map(rgbOf);
+const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+const mixc = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+
+// ======================================================================
+// XXXVIII. INK — marbling on water (ebru, suminagashi). Every drop
+//          pushes all the ink before it outward; every comb drags it
+//          along. The real mathematics of marbled paper. Tap to drop,
+//          drag to comb, double-tap to swirl.
+// ======================================================================
+const INKS = [
+  ['#1d2d50', '#c0392b', '#e8b04b', '#f3ead8', '#3f6e5d'], ['#14213d', '#fca311', '#e5e5e5', '#8d0801', '#f6e7cb'],
+  ['#1b1b1e', '#373f51', '#58a4b0', '#a9bcd0', '#d8dbe2'], ['#5f0f40', '#9a031e', '#fb8b24', '#e36414', '#0f4c5c'],
+  ['#264653', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51'], ['#2b2d42', '#8d99ae', '#edf2f4', '#ef233c', '#d90429'],
+];
+function Ink() {
+  const R = seedNow(8317);
+  let pal, drops, growing, prog, pi, pt, printT, ci, lastPlip = 0, did = {}, swirlAt = null, ex = 0, ey = 0, rf = 0;
+  const cap = DESK ? 60000 : 36000;
+  function reset() {
+    pal = INKS[R() * INKS.length | 0].map(rgbOf); drops = []; growing = []; pi = 0; pt = 0; printT = 0; ci = 0;
+    // each visit, the marbler has a different hand: a sequence of drops, combs and swirls, repeated with variations
+    const moves = ['eye', 'scatter', 'comb', 'eye', 'wave', 'swirl', 'scatter', 'comb', 'eye', 'swirl'];
+    prog = shuffle(moves.slice()).slice(0, 6 + (R() * 3 | 0)); prog.unshift('eye');
+  }
+  const verts = () => drops.reduce((n, d) => n + d.v.length / 2, 0);
+  function circle(x, y, r, n = 72) { const v = []; for (let i = 0; i < n; i++) { const a = i / n * TAU; v.push(x + Math.cos(a) * r, y + Math.sin(a) * r); } return v; }
+  // a drop of area r² at p pushes every point outward so that areas are kept (Jaffer & Lu, "Mathematical marbling")
+  function push(px, py, r2) {
+    for (const d of drops) { const v = d.v; for (let i = 0; i < v.length; i += 2) { const dx = v[i] - px, dy = v[i + 1] - py, q = dx * dx + dy * dy; if (q < 1e-6) continue; const k = Math.sqrt(1 + r2 / q); v[i] = px + dx * k; v[i + 1] = py + dy * k; } }
+  }
+  // a tine drawn through p along unit m drags the ink, less and less with distance from the line
+  function tine(px, py, mx, my, z, c) {
+    const nx = -my, ny = mx;
+    for (const d of drops) { const v = d.v; for (let i = 0; i < v.length; i += 2) { const k = z * c / (Math.abs((v[i] - px) * nx + (v[i + 1] - py) * ny) + c); v[i] += mx * k; v[i + 1] += my * k; } }
+  }
+  function swirl(cx, cy, s, lam) {
+    for (const d of drops) { const v = d.v; for (let i = 0; i < v.length; i += 2) { const dx = v[i] - cx, dy = v[i + 1] - cy, r = Math.hypot(dx, dy), a = s * Math.exp(-r / lam), c = Math.cos(a), sn = Math.sin(a); v[i] = cx + dx * c - dy * sn; v[i + 1] = cy + dx * sn + dy * c; } }
+  }
+  function refine() {
+    if (verts() > cap) return;
+    for (const d of drops) {
+      if (d.v.length > 2800) continue;
+      const v = d.v, o = [];
+      for (let i = 0; i < v.length; i += 2) { const j = (i + 2) % v.length; o.push(v[i], v[i + 1]); const dx = v[j] - v[i], dy = v[j + 1] - v[i + 1]; if (dx * dx + dy * dy > 49) o.push((v[i] + v[j]) / 2, (v[i + 1] + v[j + 1]) / 2); }
+      d.v = o;
+    }
+  }
+  function drop(x, y, r, col) {
+    if (drops.length > 70) return;
+    const d = { v: circle(x, y, .5), x, y, r: .5, R: r, col: col || pal[ci++ % pal.length] };
+    push(x, y, .25); drops.push(d); growing.push(d);
+    if (T - lastPlip > .08) { lastPlip = T; S.note(scaleNote(64, (Math.random() * 8) | 0), { g: .03, d: .9, glide: 1.25, wet: .7 }); S.note(mtof(45), { g: .02, d: .5 }); }
+  }
+  const step = { eye: 0, comb: 0 };
+  return {
+    dur: 140, paper: true, hiddenTitle: 'the ink is still moving',
+    enter() { reset(); S.drone([mtof(41), mtof(48), mtof(53), mtof(57)], .12, 520); },
+    resize() { reset(); },
+    up(p) { if (p.moved < 12 && T - p.t0 < .4) { drop(p.x, p.y, rand(18, 46)); did.drop = 1; } },
+    down(p) { p.inkHold = T; },
+    move(p) {
+      const L = Math.hypot(p.dx, p.dy); if (L < .5) return;
+      tine(p.x, p.y, p.dx / L, p.dy / L, Math.min(L, 30) * 1.3, 18); did.comb = 1;
+      if (Math.random() < .1) S.noise({ dur: .2, f: 1400, q: 2, g: .012 });
+    },
+    dbl(p) { pt = 0; swirlAt = { x: p.x, y: p.y, k: 1.4 }; did.swirl = 1; S.note(mtof(57), { g: .04, d: 2, glide: .7 }); },
+    shake() { printT = 99; },
+    frame(dt) {
+      // drops grow over a second or so (successive pushes compose exactly)
+      for (let i = growing.length - 1; i >= 0; i--) { const d = growing[i], nr = Math.min(d.R, d.r + dt * 55); push(d.x, d.y, nr * nr - d.r * d.r); d.r = nr; if (nr >= d.R) growing.splice(i, 1); }
+      for (const p of P.values()) if (p.inkHold && T - p.inkHold > .6 && p.moved < 12 && !growing.length) { drop(p.x, p.y, rand(14, 30)); p.inkHold = T - .25; }
+      if (swirlAt) { swirl(swirlAt.x, swirlAt.y, swirlAt.k * dt * 1.6, Math.min(W, H) * .18); swirlAt.k *= Math.pow(.25, dt); if (swirlAt.k < .05) swirlAt = null; }
+      // the marbler's own hand
+      pt += dt; printT += dt;
+      const mv = prog[pi % prog.length];
+      if (mv === 'eye') { if (pt > step.eye && pt < 5) { step.eye = pt + .55; if (!ex) { ex = rand(.25, .75) * W; ey = rand(.25, .75) * H; } drop(ex, ey, rand(22, 42)); } if (pt > 6) { pi++; pt = 0; step.eye = 0; ex = 0; } }
+      else if (mv === 'scatter') { if (Math.random() < dt * 3) drop(rand(.1, .9) * W, rand(.1, .9) * H, rand(12, 34)); if (pt > 5) { pi++; pt = 0; } }
+      else if (mv === 'comb') { const n = 7, z = 26 * dt * Math.sin(Math.min(1, pt / 4) * Math.PI); for (let k = 0; k < n; k++) tine((k + .5) / n * W, 0, 0, k % 2 ? 1 : -1, z * 4, 12); if (pt > 4) { pi++; pt = 0; } }
+      else if (mv === 'wave') { const n = 9; for (let k = 0; k < n; k++) { const y = (k + .5) / n * H; tine(0, y, 1, 0, Math.sin(pt * 1.7 + k) * 60 * dt, 14); } if (pt > 5) { pi++; pt = 0; } }
+      else if (mv === 'swirl') { if (!swirlAt && pt < .1) swirlAt = { x: rand(.3, .7) * W, y: rand(.3, .7) * H, k: 1.2 }; if (pt > 5) { pi++; pt = 0; } }
+      if ((rf += dt) > .4) { rf = 0; refine(); }
+      if (did.drop && did.comb && did.swirl && found('marbled')) S.bell(mtof(64), 0, .5);
+      // after a couple of minutes the paper is lifted and a new one is laid down
+      const lift = clamp((printT - 125) / 5, 0, 1);
+      if (lift >= 1) { reset(); S.noise({ dur: 1.2, f: 900, ft: 'lowpass', g: .05 }); }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      g.drawImage(paper(), 0, 0, W, H);
+      g.globalAlpha = .9;
+      for (const d of drops) {
+        const v = d.v; g.fillStyle = rgba(d.col, 1); g.beginPath(); g.moveTo(v[0], v[1]);
+        for (let i = 2; i < v.length; i += 2) g.lineTo(v[i], v[i + 1]);
+        g.closePath(); g.fill();
+      }
+      g.globalAlpha = 1;
+      if (lift > 0) { g.fillStyle = `rgba(235,228,214,${lift})`; g.fillRect(0, 0, W, H); }
+    }
+  };
+}
+
+// ======================================================================
+// XXXIX. JELLY — jellyfish in the deep, pulsing slowly upward, their
+//        tentacles trailing. The water darkens as you sink, and they
+//        begin to glow. Touch one and it lights.
+// ======================================================================
+function Jelly() {
+  const R = seedNow(5021), pal = pickPal(R);
+  let J = [], snow = [], depth = 0, shafts, lastPulse = 0;
+  function make() {
+    const s = rand(20, 52), col = pal[R() * pal.length | 0], nT = 7 + (R() * 6 | 0);
+    const j = { x: rand(.1, .9) * W, y: H + rand(20, 200), a: -Math.PI / 2 + rand(-.4, .4), vx: 0, vy: 0, s, ph: R(), rate: rand(.45, .8), col, glow: 0, tents: [] };
+    for (let k = 0; k < nT; k++) { const chain = []; for (let i = 0; i < 16; i++) chain.push({ x: j.x, y: j.y + i * 4, px: j.x, py: j.y + i * 4 }); j.tents.push(chain); }
+    return j;
+  }
+  function init() {
+    J = []; for (let i = 0; i < 4; i++) { const j = make(); j.y = rand(.3, 1) * H; for (const c of j.tents) for (const n of c) { n.y += j.y - H; n.py = n.y; } J.push(j); }
+    snow = []; for (let i = 0; i < (DESK ? 320 : 200); i++) snow.push({ x: R() * W, y: R() * H, z: R(), v: rand(4, 14) });
+    shafts = mk(W, H); const x = shafts.getContext('2d');
+    for (let i = 0; i < 6; i++) { const cx = R() * W, w = rand(40, 140), lg = x.createLinearGradient(0, 0, 0, H * .8); lg.addColorStop(0, 'rgba(180,230,255,.10)'); lg.addColorStop(1, 'rgba(180,230,255,0)'); x.fillStyle = lg; x.beginPath(); x.moveTo(cx - w, 0); x.lineTo(cx + w, 0); x.lineTo(cx + w * .4 + 120, H * .8); x.lineTo(cx - w * .4 + 80, H * .8); x.closePath(); x.fill(); }
+  }
+  return {
+    dur: 140, hiddenTitle: 'they are still rising',
+    enter() { init(); S.drone([mtof(33), mtof(40), mtof(45), mtof(52)], .2, 380); },
+    resize() { init(); },
+    up(p) {
+      if (p.moved > 14) return;
+      for (const j of J) if (Math.hypot(j.x - p.x, j.y - p.y) < j.s * 2.2) { j.glow = 1; S.bell(scaleNote(57, (j.s / 6 | 0)), 0, .45); buzz(8); }
+      for (const m of snow) if (Math.hypot(m.x - p.x, m.y - p.y) < 90) m.glow = 1;
+    },
+    move(p) { for (const j of J) { const d = Math.hypot(j.x - p.x, j.y - p.y); if (d < 120) { j.vx += (j.x - p.x) / (d + 1) * 30; j.vy += (j.y - p.y) / (d + 1) * 30; } } },
+    shake() { for (const j of J) { j.glow = 1; j.vx += rand(-60, 60); } },
+    frame(dt) {
+      depth = Math.min(1, depth + dt / 150);
+      if (J.length < 9 && Math.random() < dt / 14) J.push(make());
+      const top = mixc([18, 70, 96], [2, 6, 14], depth), bot = mixc([4, 18, 34], [0, 0, 3], depth);
+      const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, rgba(top, 1)); bg.addColorStop(1, rgba(bot, 1));
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.fillStyle = bg; g.fillRect(0, 0, W, H);
+      g.globalAlpha = (1 - depth) * (.7 + .3 * Math.sin(T * .3)); g.drawImage(shafts, Math.sin(T * .05) * 30, 0, W, H); g.globalAlpha = 1;
+      // marine snow
+      g.fillStyle = 'rgba(220,235,240,.5)';
+      for (const m of snow) {
+        m.y += m.v * dt * (.3 + m.z); m.x += Math.sin(T * .3 + m.z * 9) * 4 * dt; if (m.y > H) { m.y = -2; m.x = Math.random() * W; }
+        m.glow = Math.max(0, (m.glow || 0) - dt);
+        const a = .15 + m.z * .35 + (m.glow || 0) * .6; g.globalAlpha = a; g.fillRect(m.x, m.y, .8 + m.z * 1.4, .8 + m.z * 1.4);
+      }
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = 'lighter';
+      const lum = .6 + depth * .5;
+      for (const j of J) {
+        j.ph += j.rate * dt; const c = Math.pow(Math.max(0, Math.sin(j.ph * TAU)), 2);
+        if (c > .95 && T - lastPulse > .5) { lastPulse = T; S.note(scaleNote(45, (j.s / 5 | 0)), { g: .012, d: 1.6, wet: .9 }); }
+        j.a += (Math.sin(T * .2 + j.s) * .2 + (-Math.PI / 2 - j.a) * .3 + TILT.rx * .3) * dt;
+        j.vx += Math.cos(j.a) * c * 60 * dt; j.vy += Math.sin(j.a) * c * 60 * dt; j.vx *= Math.pow(.6, dt); j.vy *= Math.pow(.6, dt);
+        j.x += j.vx * dt; j.y += j.vy * dt; j.glow = Math.max(0, j.glow - dt * .5);
+        if (j.y < -j.s * 6) { j.y = H + j.s * 3; j.x = rand(.1, .9) * W; for (const ch of j.tents) for (const n of ch) { n.x = n.px = j.x; n.y = n.py = j.y; } }
+        if (j.x < -60) j.x = W + 60; else if (j.x > W + 60) j.x = -60;
+        const w = j.s * (1 - .22 * c), h = j.s * (.85 + .25 * c), ca = Math.cos(j.a + Math.PI / 2), sa = Math.sin(j.a + Math.PI / 2);
+        const L = (lx, ly) => [j.x + lx * ca - ly * sa, j.y + lx * sa + ly * ca];
+        // tentacles: chains that follow the rim, drift and settle (verlet)
+        g.lineWidth = 1;
+        j.tents.forEach((ch, k) => {
+          const u = (k + .5) / j.tents.length * 2 - 1, [ax, ay] = L(u * w * .9, h * .15);
+          ch[0].x = ax; ch[0].y = ay;
+          for (let i = 1; i < ch.length; i++) { const n = ch[i], vx = (n.x - n.px) * .9, vy = (n.y - n.py) * .9; n.px = n.x; n.py = n.y; n.x += vx + Math.sin(T * 1.3 + i * .4 + k) * .15; n.y += vy + .25; }
+          for (let it = 0; it < 2; it++) for (let i = 1; i < ch.length; i++) { const a = ch[i - 1], b = ch[i], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, f = (d - j.s * .2) / d; b.x -= dx * f; b.y -= dy * f; }
+          g.strokeStyle = rgba(j.col, (.3 + j.glow * .5) * lum); g.beginPath(); g.moveTo(ch[0].x, ch[0].y);
+          for (let i = 1; i < ch.length - 1; i++) g.quadraticCurveTo(ch[i].x, ch[i].y, (ch[i].x + ch[i + 1].x) / 2, (ch[i].y + ch[i + 1].y) / 2);
+          g.stroke();
+        });
+        // the bell
+        const [bx, by] = L(0, -h * .35), gr = g.createRadialGradient(bx, by, 0, bx, by, j.s * 1.4);
+        gr.addColorStop(0, rgba(j.col, (.5 + j.glow * .5) * lum)); gr.addColorStop(.6, rgba(j.col, (.2 + j.glow * .3) * lum)); gr.addColorStop(1, rgba(j.col, 0));
+        g.fillStyle = gr; g.beginPath();
+        let q = L(-w, 0); g.moveTo(q[0], q[1]);
+        const c1 = L(-w, -h * 1.3), c2 = L(w, -h * 1.3), e = L(w, 0); g.bezierCurveTo(c1[0], c1[1], c2[0], c2[1], e[0], e[1]);
+        for (let i = 8; i >= 0; i--) { const u = i / 8 * 2 - 1, s1 = L(u * w, h * .12 * (i % 2 ? 1.6 : .4)); g.lineTo(s1[0], s1[1]); }
+        g.closePath(); g.fill();
+        g.strokeStyle = rgba(j.col, (.35 + j.glow * .6) * lum); g.lineWidth = 1.2; g.stroke();
+      }
+      g.globalCompositeOperation = 'source-over';
+      if (depth >= 1) found('abyss');
+    }
+  };
+}
+
+// ======================================================================
+// XL. SILK — threads of light carried by a slow current, woven over
+//     each other until the screen is cloth. Your finger is an eddy.
+// ======================================================================
+function Silk() {
+  const R = seedNow(2711), pal = pickPal(R), noise = valueNoise(R, 2), sc = rand(.0015, .004), turns = rand(1.5, 3.5);
+  let acc, ax, ps = [], t0 = 0, shift = 0, hum = null;
+  function init() {
+    acc = mk(W * DPR, H * DPR); ax = acc.getContext('2d'); ax.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ps = []; for (let i = 0; i < (DESK ? 1100 : 700) * Math.max(.5, QUAL); i++) ps.push(spawn({}));
+  }
+  function spawn(p) { p.x = Math.random() * W; p.y = Math.random() * H; p.life = rand(4, 14); p.c = Math.random() * pal.length | 0; return p; }
+  return {
+    dur: 150, hiddenTitle: 'it is still weaving',
+    enter() { init(); t0 = T; S.drone([mtof(38), mtof(45), mtof(50), mtof(54)], .14, 650); },
+    exit() { if (hum) hum.end(); hum = null; },
+    resize() { init(); },
+    down() { if (!hum) hum = S.voice(.02); },
+    up() { if (hum && P.size === 0) { hum.end(); hum = null; } },
+    move(p) { if (hum) hum.set(mtof(62 + clamp(Math.hypot(p.dx, p.dy), 0, 24))); },
+    dbl() { ax.globalCompositeOperation = 'destination-out'; ax.fillStyle = 'rgba(0,0,0,.6)'; ax.fillRect(0, 0, W, H); ax.globalCompositeOperation = 'source-over'; },
+    shake() { for (const p of ps) spawn(p); },
+    frame(dt) {
+      const tt = (T - t0) * .015; shift += dt / 45;
+      ax.globalCompositeOperation = 'destination-out'; ax.fillStyle = `rgba(0,0,0,${dt * .05})`; ax.fillRect(0, 0, W, H);
+      ax.globalCompositeOperation = 'lighter'; ax.lineWidth = 1;
+      const paths = pal.map(() => new Path2D());
+      for (const p of ps) {
+        let an = (noise(p.x * sc + tt, p.y * sc - tt * .7) - .5) * TAU * turns + Math.sin(tt * .5) * .5;
+        let vx = Math.cos(an) * 46, vy = Math.sin(an) * 46;
+        for (const f of P.values()) { const dx = p.x - f.x, dy = p.y - f.y, d2 = dx * dx + dy * dy + 400, k = 9e5 / d2; vx += -dy / Math.sqrt(d2) * k * .02; vy += dx / Math.sqrt(d2) * k * .02; }
+        const nx = p.x + vx * dt, ny = p.y + vy * dt;
+        paths[(p.c + (shift | 0)) % pal.length].moveTo(p.x, p.y); paths[(p.c + (shift | 0)) % pal.length].lineTo(nx, ny);
+        p.x = nx; p.y = ny; p.life -= dt;
+        if (p.life < 0 || p.x < -10 || p.y < -10 || p.x > W + 10 || p.y > H + 10) spawn(p);
+      }
+      ax.globalAlpha = .16; paths.forEach((pth, i) => { ax.strokeStyle = rgba(pal[i], 1); ax.stroke(pth); }); ax.globalAlpha = 1;
+      if (T - t0 > 180) found('woven');
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.fillStyle = '#050407'; g.fillRect(0, 0, W, H);
+      g.drawImage(acc, 0, 0, W, H);
+    }
+  };
+}
+
+// ======================================================================
+// XLI. LEAF — a leaf grows, and its veins grow inside it toward the
+//      places that need water (the way real veins form). It ripens,
+//      turns, and falls; another begins. Hold it up to the light.
+// ======================================================================
+function Leaf() {
+  const R = seedNow(4447);
+  let shape, nodes, src, grid, t, age, life, col, colA, fall, sw, D = .012, DI = .09, DK = .02, light = null, lastTick = 0, cnt = null, scale = 1, cx, cy, rot;
+  const key = (x, y) => (Math.floor(x / DI) + 1000) * 4000 + Math.floor(y / DI) + 1000;
+  function inside(x, y) {   // leaf space: the stalk at (0,0), the tip at (0,-1)
+    const v = -y; if (v < 0 || v > 1) return false;
+    let w = shape.w * Math.pow(Math.sin(Math.PI * Math.pow(v, shape.p)), shape.q) * (1 - shape.taper * v);
+    if (shape.lobes) w *= 1 + .28 * Math.cos(v * Math.PI * shape.lobes * 2) * Math.sin(Math.PI * v);
+    if (shape.heart && v < .15) w = Math.max(w, shape.w * .6 * Math.sin(v / .15 * Math.PI / 2));
+    return Math.abs(x) < w;
+  }
+  function addNode(x, y, p) { const i = nodes.length; nodes.push({ x, y, p, w: 1 }); const k = key(x, y); (grid.get(k) || grid.set(k, []).get(k)).push(i); return i; }
+  function near(x, y, r) { let best = -1, bd = r * r; const cx0 = Math.floor(x / DI), cy0 = Math.floor(y / DI); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const l = grid.get((cx0 + a + 1000) * 4000 + cy0 + b + 1000); if (!l) continue; for (const i of l) { const n = nodes[i], d = (n.x - x) ** 2 + (n.y - y) ** 2; if (d < bd) { bd = d; best = i; } } } return best; }
+  function begin() {
+    const k = R();
+    shape = { w: rand(.22, .42), p: rand(.6, 1.1), q: rand(.6, 1), taper: rand(0, .35), lobes: k < .25 ? 2 + (R() * 3 | 0) : 0, heart: k > .8 };
+    nodes = []; grid = new Map(); src = []; t = 0; age = 0; fall = null; light = null;
+    let p = addNode(0, .04, -1); for (let i = 1; i < 6; i++) p = addNode(0, .04 - i * D, p);
+    const sea = season(), pal = [[[150, 210, 110], [60, 130, 60]], [[90, 170, 80], [30, 90, 40]], [[230, 170, 60], [190, 70, 30]], [[120, 150, 90], [70, 90, 60]]][sea];
+    col = pal; colA = [[235, 160, 50], [180, 50, 30]];
+    rot = rand(-.25, .25); sw = R() * TAU; cnt = null;
+  }
+  function grow() {
+    // new sources appear wherever the blade has room
+    for (let k = 0; k < 14 && src.length < 500; k++) { const x = rand(-.5, .5), y = -Math.random(); if (inside(x, y) && near(x, y, DK * 2.2) < 0) src.push([x, y]); }
+    const pull = new Map();
+    for (const s of src) { const i = near(s[0], s[1], DI); if (i < 0) continue; const n = nodes[i], dx = s[0] - n.x, dy = s[1] - n.y, d = Math.hypot(dx, dy) || 1; const a = pull.get(i) || [0, 0, 0]; a[0] += dx / d; a[1] += dy / d; a[2]++; pull.set(i, a); }
+    let made = 0;
+    for (const [i, a] of pull) { if (nodes.length > 2600) break; const n = nodes[i], L = Math.hypot(a[0], a[1]) || 1, x = n.x + a[0] / L * D, y = n.y + a[1] / L * D; if (!inside(x, y)) continue; addNode(x, y, i); made++; }
+    src = src.filter(s => near(s[0], s[1], DK) < 0);
+    if (made && T - lastTick > .12) { lastTick = T; S.note(rand(2600, 4000), { g: .004, d: .08, wet: .5 }); }
+    // the pipe model: a vein is as thick as the veins it feeds
+    for (const n of nodes) n.w = 1;
+    for (let i = nodes.length - 1; i > 0; i--) { const p = nodes[i].p; if (p >= 0) nodes[p].w += nodes[i].w; }
+  }
+  const outline = (s) => { const pts = []; for (let i = 0; i <= 60; i++) { const v = i / 60; let lo = 0, hi = .6; for (let k = 0; k < 14; k++) { const m = (lo + hi) / 2; inside(m, -v) ? lo = m : hi = m; } pts.push([lo, -v]); } return pts; };
+  let edge = null;
+  return {
+    dur: 150, hiddenTitle: 'it is still growing veins',
+    enter() { begin(); edge = outline(); S.drone([mtof(40), mtof(47), mtof(52), mtof(59)], .12, 600); },
+    resize() {},
+    down(p) { light = p; },
+    up(p) {
+      if (light === p) light = null;
+      if (p.moved < 12) { const lx = ((p.x - cx) * Math.cos(-rot) - (p.y - cy) * Math.sin(-rot)) / scale, ly = ((p.x - cx) * Math.sin(-rot) + (p.y - cy) * Math.cos(-rot)) / scale; for (let k = 0; k < 20; k++) { const x = lx + rand(-.06, .06), y = ly + rand(-.06, .06); if (inside(x, y)) src.push([x, y]); } S.note(scaleNote(52, 4), { g: .03, d: 1.2 }); }
+    },
+    shake() { if (!fall) fall = { t: 0, vx: rand(-40, 40), spin: rand(-1, 1) }; },
+    frame(dt) {
+      t += dt; age += dt;
+      if (age < 95) grow();
+      if (age > 110 && !fall) fall = { t: 0, vx: rand(-40, 40), spin: rand(-1, 1) };
+      const turn = clamp((age - 85) / 25, 0, 1);
+      if (fall) { fall.t += dt; if (fall.t > 9) { found('fall'); begin(); edge = outline(); S.bell(mtof(52), 0, .5); } }
+      scale = Math.min(W * 1.1, H * .78) * (.45 + .55 * Math.min(1, age / 60));
+      cx = W / 2 + (fall ? fall.vx * fall.t + Math.sin(fall.t * 1.5) * 30 : 0); cy = H * .88 + (fall ? fall.t * fall.t * 14 : 0);
+      const r0 = rot + Math.sin(T * .4 + sw) * .03 + (fall ? fall.spin * fall.t * .5 : 0);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.fillStyle = '#060807'; g.fillRect(0, 0, W, H);
+      g.save(); g.translate(cx, cy); g.rotate(r0); g.scale(scale, scale);
+      const [ca, cb] = col.map((c, i) => mixc(c, colA[i], turn));
+      const lg = g.createLinearGradient(0, 0, 0, -1); lg.addColorStop(0, rgba(cb, 1)); lg.addColorStop(1, rgba(ca, 1));
+      g.fillStyle = lg; g.beginPath(); g.moveTo(0, 0); for (const [x, y] of edge) g.lineTo(x, y); for (let i = edge.length - 1; i >= 0; i--) g.lineTo(-edge[i][0], edge[i][1]); g.closePath(); g.fill();
+      // veins, in a few widths; brighter where the light shines through
+      const lx = light ? ((light.x - cx) * Math.cos(-r0) - (light.y - cy) * Math.sin(-r0)) / scale : 9, ly = light ? ((light.x - cx) * Math.sin(-r0) + (light.y - cy) * Math.cos(-r0)) / scale : 9;
+      if (light) { const rg = g.createRadialGradient(lx, ly, 0, lx, ly, .35); rg.addColorStop(0, 'rgba(255,250,210,.45)'); rg.addColorStop(1, 'rgba(255,250,210,0)'); g.fillStyle = rg; g.fill(); }
+      const buckets = [new Path2D(), new Path2D(), new Path2D(), new Path2D(), new Path2D()];
+      for (let i = 1; i < nodes.length; i++) { const n = nodes[i]; if (n.p < 0) continue; const q = nodes[n.p], b = Math.min(4, Math.floor(Math.log2(n.w) / 1.6)); buckets[b].moveTo(q.x, q.y); buckets[b].lineTo(n.x, n.y); }
+      const vc = mixc([235, 245, 200], [255, 220, 150], turn);
+      buckets.forEach((pth, b) => { g.strokeStyle = rgba(vc, .25 + b * .12); g.lineWidth = (.6 + b * b * .55) / scale; g.stroke(pth); });
+      g.restore();
+    }
+  };
+}
+
+// ======================================================================
+// XLII. MEADOW — flowers of three kinds invented for this visit sprout,
+//       open, blaze, wilt and go to seed, and the seeds blow away on
+//       the wind. Drag to send a gust.
+// ======================================================================
+function Meadow() {
+  const R = seedNow(7177), pal = pickPal(R);
+  let species, flowers, seeds, pollen, wind = 0, gust = 0, spawnT = 0, open = 0;
+  function petalSprite(sp) {
+    const c = mk(48, 128), x = c.getContext('2d'), w = 24 * sp.wide;
+    const lg = x.createLinearGradient(0, 128, 0, 0); lg.addColorStop(0, rgba(sp.inner, 1)); lg.addColorStop(.55, rgba(sp.outer, 1)); lg.addColorStop(1, rgba(mixc(sp.outer, [255, 255, 255], .35), 1));
+    x.fillStyle = lg; x.beginPath(); x.moveTo(24, 128);
+    x.bezierCurveTo(24 - w, 100, 24 - w * sp.belly, 30, 24 - (sp.notch ? 6 : 0), sp.point ? 0 : 8);
+    if (sp.notch) x.lineTo(24, 14);
+    x.bezierCurveTo(24 + w * sp.belly, 30, 24 + w, 100, 24, 128); x.fill();
+    x.strokeStyle = 'rgba(255,255,255,.18)'; x.lineWidth = 1; x.beginPath(); x.moveTo(24, 126); x.lineTo(24, 30); x.stroke();
+    return c;
+  }
+  function init() {
+    species = [0, 1, 2].map(() => { const sp = { n: [5, 5, 6, 8, 12, 13, 21][R() * 7 | 0], layers: 1 + (R() * 2 | 0), wide: rand(.35, 1), belly: rand(.6, 1.2), point: R() < .5, notch: R() < .25, inner: pal[R() * 5 | 0], outer: pal[R() * 5 | 0], core: mixc(pal[R() * 5 | 0], [60, 40, 20], .5), size: rand(15, 30), stem: rand(.14, .36) }; sp.img = petalSprite(sp); return sp; });
+    flowers = []; seeds = []; pollen = []; spawnT = 0;
+  }
+  function sprout() {
+    const z = Math.random(), sp = species[Math.random() * 3 | 0];
+    flowers.push({ x: rand(-.05, 1.05) * W, z, base: H * (.62 + z * .4), h: H * sp.stem * (.5 + z * .7), sp, t: 0, ph: Math.random() * TAU, life: rand(48, 70), rang: false });
+    flowers.sort((a, b) => a.z - b.z);
+  }
+  const ease = k => k < 0 ? 0 : k > 1 ? 1 : k * k * (3 - 2 * k);
+  return {
+    dur: 150, hiddenTitle: 'it is going to seed',
+    enter() { init(); for (let i = 0; i < 30; i++) { sprout(); flowers[flowers.length - 1].t = rand(0, 26); } S.drone([mtof(43), mtof(50), mtof(55), mtof(62)], .12, 700); },
+    resize() { init(); },
+    move(p) { gust = clamp(gust + p.dx * .02, -3, 3); },
+    shake() { gust = rand(-3, 3); for (const f of flowers) if (f.t > f.life - 15) f.t = f.life; },
+    frame(dt) {
+      spawnT -= dt; if (spawnT <= 0 && flowers.length < (DESK ? 90 : 60)) { spawnT = rand(.3, 1.2); sprout(); }
+      gust *= Math.pow(.4, dt); wind = Math.sin(T * .23) * .4 + Math.sin(T * .71) * .2 + gust + (LIVE.wx ? clamp(LIVE.wx.wind / 30, 0, 1) : 0);
+      const sk = g.createLinearGradient(0, 0, 0, H); sk.addColorStop(0, '#0b1020'); sk.addColorStop(.6, '#1a1730'); sk.addColorStop(1, '#2a1c24');
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.fillStyle = sk; g.fillRect(0, 0, W, H);
+      open = 0;
+      for (let i = flowers.length - 1; i >= 0; i--) {
+        const f = flowers[i]; f.t += dt;
+        if (f.t > f.life + 20) { flowers.splice(i, 1); continue; }
+        const grow = ease(f.t / 6), bloom = ease((f.t - 8) / 8), wilt = ease((f.t - f.life + 12) / 10), seedy = f.t > f.life;
+        if (bloom > .98 && wilt < .05) open++;
+        if (bloom > .9 && !f.rang) { f.rang = true; S.note(scaleNote(57, species.indexOf(f.sp) * 3 + (Math.random() * 3 | 0)), { g: .018 + f.z * .02, d: 2.5, wet: .8, pan: f.x / W * 2 - 1 }); }
+        const sway = (wind * (.6 + f.z) + Math.sin(T * 1.1 + f.ph) * .15) * grow, hx = f.x + sway * f.h * .35, hy = f.base - f.h * grow + Math.abs(sway) * f.h * .08 + wilt * f.h * .15;
+        const s = f.sp.size * (.55 + f.z * .9), dim = .45 + f.z * .55;
+        g.strokeStyle = `rgba(${70 * dim | 0},${110 * dim | 0},${60 * dim | 0},1)`; g.lineWidth = 1 + f.z * 1.6; g.beginPath(); g.moveTo(f.x, f.base); g.quadraticCurveTo(f.x, (f.base + hy) / 2, hx, hy); g.stroke();
+        if (grow > .5) { g.fillStyle = `rgba(${60 * dim | 0},${100 * dim | 0},${55 * dim | 0},1)`; g.beginPath(); g.ellipse(f.x + sway * 6, f.base - f.h * .3 * grow, s * .25, s * .9, .7 + sway * .3, 0, TAU); g.fill(); }
+        if (!seedy && f.t > 5) {
+          g.save(); g.translate(hx, hy); g.rotate(sway * .25 + wilt * .9); g.scale(1, .62 + bloom * .18); g.globalAlpha = dim * (1 - wilt * .6);
+          for (let L = f.sp.layers - 1; L >= 0; L--) for (let k = 0; k < f.sp.n; k++) {
+            const a = k / f.sp.n * TAU + L * Math.PI / f.sp.n, len = s * (1 - L * .25) * (.25 + .75 * bloom) * (1 - wilt * .3), spread = .15 + .85 * bloom;
+            g.save(); g.rotate(a * spread - (wilt * .3)); g.drawImage(f.sp.img, -len * .19, -len, len * .38, len); g.restore();
+          }
+          g.globalAlpha = dim; g.fillStyle = rgba(f.sp.core, 1); g.beginPath(); g.arc(0, 0, s * .16 * (.5 + bloom), 0, TAU); g.fill();
+          g.restore();
+          if (bloom > .9 && wilt < .3 && Math.random() < dt * .8) pollen.push({ x: hx, y: hy, vx: rand(-5, 5), vy: rand(-12, -4), t: 0 });
+        } else if (seedy) {
+          const k = (f.t - f.life) / 20, n = 18;
+          g.strokeStyle = `rgba(240,236,225,${.5 * dim * (1 - k)})`; g.lineWidth = .6; g.beginPath();
+          for (let q = 0; q < n * (1 - k); q++) { const a = q / n * TAU; g.moveTo(hx, hy); g.lineTo(hx + Math.cos(a) * s * .7, hy + Math.sin(a) * s * .7); } g.stroke();
+          if (Math.random() < dt * 4 * (1 + Math.abs(wind))) seeds.push({ x: hx, y: hy, vx: wind * 30 + rand(-6, 6), vy: rand(-18, -6), t: 0, z: f.z });
+        }
+      }
+      g.globalAlpha = 1; g.globalCompositeOperation = 'lighter';
+      for (let i = pollen.length - 1; i >= 0; i--) { const p = pollen[i]; p.t += dt; p.x += (p.vx + wind * 10) * dt; p.y += p.vy * dt; if (p.t > 5) { pollen.splice(i, 1); continue; } g.fillStyle = `rgba(255,220,140,${.5 * (1 - p.t / 5)})`; g.fillRect(p.x, p.y, 1.4, 1.4); }
+      g.globalCompositeOperation = 'source-over';
+      g.strokeStyle = 'rgba(240,236,225,.55)'; g.lineWidth = .7;
+      for (let i = seeds.length - 1; i >= 0; i--) {
+        const s = seeds[i]; s.t += dt; s.vx += (wind * 40 - s.vx) * dt * .5; s.vy += (Math.sin(s.t * 3 + i) * 6 - 4) * dt; s.x += s.vx * dt; s.y += s.vy * dt;
+        if (s.t > 12 || s.x < -20 || s.x > W + 20 || s.y < -20) { seeds.splice(i, 1); continue; }
+        const r = 2 + s.z * 3; g.beginPath(); for (let q = 0; q < 6; q++) { const a = q / 6 * Math.PI - Math.PI; g.moveTo(s.x, s.y); g.lineTo(s.x + Math.cos(a) * r, s.y + Math.sin(a) * r); } g.stroke();
+      }
+      if (seeds.length > 400) seeds.splice(0, seeds.length - 400);
+      if (open >= 25) found('meadow');
+    }
+  };
+}
+
+// ======================================================================
+// XLIII. SKY — a whole day over the hills in two and a half minutes,
+//        starting from your own hour: the real length of your day,
+//        dawn, noon, the golden hour, dusk, stars. Drag sideways to
+//        move through time.
+// ======================================================================
+function Sky() {
+  const R = seedNow(2399), noise = valueNoise(R, 2);
+  let h0, hours, hills, clouds, stars, layers, startH, lastCh = 0, lastCr = 0, watched = 0;
+  const doy = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 1)) / 864e5);
+  const dec = -23.44 * Math.cos(TAU * (doy + 10) / 365) * RAD, xx = -Math.tan(CTX.lat * RAD) * Math.tan(dec), dayLen = xx <= -1 ? 24 : xx >= 1 ? 0 : 24 / Math.PI * Math.acos(xx);
+  const noonAlt = 90 - Math.abs(CTX.lat - dec / RAD);
+  const sunAlt = h => { const k = (h - 12) / (dayLen / 2 || 1e-3); return dayLen <= 0 ? -20 : dayLen >= 24 ? noonAlt * .6 + Math.cos((h - 12) / 12 * Math.PI) * noonAlt * .3 : (Math.cos(Math.min(Math.PI, Math.abs(k) * Math.PI / 2)) * (noonAlt + 8) - 8 + Math.max(0, Math.abs(k) - 1) * -15); };
+  function skyCols(a) {
+    const K = [[-18, [3, 4, 12], [8, 10, 24], [12, 14, 30]], [-8, [10, 12, 36], [40, 34, 80], [90, 60, 90]], [-2, [30, 40, 90], [140, 90, 130], [255, 140, 90]],
+      [3, [60, 100, 170], [200, 150, 160], [255, 190, 120]], [12, [55, 120, 205], [130, 180, 230], [220, 225, 230]], [40, [40, 105, 200], [110, 170, 235], [190, 220, 245]]];
+    if (a <= K[0][0]) return K[0].slice(1);
+    for (let i = 1; i < K.length; i++) if (a <= K[i][0]) { const t = (a - K[i - 1][0]) / (K[i][0] - K[i - 1][0]); return [1, 2, 3].map(j => mixc(K[i - 1][j], K[i][j], t)); }
+    return K[K.length - 1].slice(1);
+  }
+  function init() {
+    hills = [0, 1, 2, 3].map(i => { const p = new Path2D(), y0 = H * (.6 + i * .09), amp = H * (.12 - i * .02); p.moveTo(0, H); for (let x = 0; x <= W + 8; x += 8) p.lineTo(x, y0 - noise(x / W * (1.5 + i), i * 3.1) * amp * 2 + amp * .5); p.lineTo(W, H); p.closePath(); return p; });
+    clouds = []; const n = 10 + (LIVE.wx ? Math.round(LIVE.wx.cloud * 14) : 6);
+    for (let i = 0; i < n; i++) { const z = R(); clouds.push({ x: R() * W * 1.4 - W * .2, y: H * (.08 + R() * .4), z, w: (80 + R() * 160) * (.5 + z), v: 4 + z * 10, puffs: [...Array(5 + (R() * 5 | 0))].map(() => [rand(-.5, .5), rand(-.18, .1), rand(.25, .5)]) }); }
+    stars = [...Array(220)].map(() => [R() * W, R() * H * .65, R()]);
+  }
+  return {
+    dur: 150, hiddenTitle: 'the day is still turning',
+    enter() { init(); const d = new Date(); startH = d.getHours() + d.getMinutes() / 60; hours = 0; watched = 0; S.drone([mtof(41), mtof(48), mtof(53), mtof(60)], .1, 600); },
+    resize() { init(); },
+    move(p) { hours += p.dx * .02; },
+    wheel(d) { hours += d * .004; },
+    frame(dt) {
+      hours += dt * 24 / 150; watched += dt;
+      if (watched > 150) found('daylong');
+      const h = ((startH + hours) % 24 + 24) % 24, a = sunAlt(h), [top, mid, hor] = skyCols(a), night = clamp((-a - 4) / 10, 0, 1), dayk = clamp((a + 4) / 20, 0, 1);
+      const sk = g.createLinearGradient(0, 0, 0, H * .75); sk.addColorStop(0, rgba(top, 1)); sk.addColorStop(.6, rgba(mid, 1)); sk.addColorStop(1, rgba(hor, 1));
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.fillStyle = sk; g.fillRect(0, 0, W, H);
+      if (night > 0) { for (const s of stars) { g.fillStyle = `rgba(240,240,255,${night * (.3 + .7 * s[2]) * (.75 + .25 * Math.sin(T * 2 + s[0]))})`; g.fillRect(s[0], s[1], 1.2, 1.2); } }
+      // the sun (and the moon, opposite it) along one arc
+      const u = (h - 12) / 12 * Math.PI, sx = W / 2 + Math.sin(u) * W * .55, sy = H * .66 - (a + 8) / (noonAlt + 8 || 1) * H * .5;
+      if (a > -6) { const glow = mixc([255, 120, 60], [255, 245, 220], dayk); g.globalCompositeOperation = 'lighter'; g.globalAlpha = .7; g.drawImage(sprite(`${glow[0] | 0},${glow[1] | 0},${glow[2] | 0}`, 128), sx - 90, sy - 90, 180, 180); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.fillStyle = rgba(mixc([255, 160, 90], [255, 252, 235], dayk), 1); g.beginPath(); g.arc(sx, sy, 11, 0, TAU); g.fill(); }
+      if (night > .2) { const mx = W - sx, my = H * .66 - (-a + 8) / (noonAlt + 8 || 1) * H * .45; g.fillStyle = `rgba(245,240,225,${night})`; g.beginPath(); g.arc(mx, Math.min(my, H * .55), 9, 0, TAU); g.fill(); }
+      // clouds lit by the hour: white by day, fire at the edges of it, slate at night
+      const lit = a > 8 ? [250, 250, 252] : a > -2 ? mixc([255, 130, 90], [250, 240, 230], clamp((a + 2) / 10, 0, 1)) : mixc([40, 44, 70], [200, 120, 130], clamp((a + 12) / 10, 0, 1));
+      for (const c of clouds) {
+        c.x += c.v * dt * 1.6; if (c.x - c.w > W) c.x = -c.w * 1.2;
+        for (const [px, py, pr] of c.puffs) { const r = c.w * pr; g.globalAlpha = .55 + c.z * .3; g.drawImage(sprite(`${lit[0] | 0},${lit[1] | 0},${lit[2] | 0}`, 64), c.x + px * c.w - r, c.y + py * c.w - r, r * 2, r * 2); }
+      }
+      g.globalAlpha = 1;
+      // hills, paler the further they are
+      hills.forEach((p, i) => { const k = (i + 1) / 5, c = mixc(hor, mixc([10, 14, 20], [40, 60, 50], dayk * .6), .35 + k * .6); g.fillStyle = rgba(c, 1); g.fill(p); });
+      if (a > -4 && a < 10 && CLK && h < 12 && T - lastCh > 1.4) { lastCh = T; S.chirp(); }
+      if (night > .5 && T - lastCr > .35) { lastCr = T; S.note(rand(4200, 4600), { g: .004, d: .04, wet: .2 }); }
+    }
+  };
+}
+
+// ======================================================================
+// XLIV. DUNES — a field of dunes seen from above, the wind moving them
+//       grain by grain, the low sun crossing the sky so every shadow
+//       turns. Drag to turn the wind.
+// ======================================================================
+function Dunes() {
+  const R = seedNow(9091), noise = valueNoise(R, 3);
+  let rs, sw, sh, cvs, cx2, img, warp, wdir = R() * TAU, wt = 0, sunA = R() * TAU, grains = [], hiss = 0;
+  const sand = [[[236, 196, 140], [170, 110, 70]], [[240, 214, 180], [190, 130, 110]], [[226, 180, 120], [140, 80, 50]], [[244, 228, 200], [160, 150, 140]]][R() * 4 | 0];
+  function init() {
+    rs = DESK ? 3 : 4; sw = Math.ceil(W / rs); sh = Math.ceil(H / rs); cvs = mk(sw, sh); cx2 = cvs.getContext('2d'); img = cx2.createImageData(sw, sh);
+    warp = new Float32Array(sw * sh); for (let y = 0; y < sh; y++) for (let x = 0; x < sw; x++) warp[y * sw + x] = noise(x / sw * 1.5, y / sh * 1.5) * 2.6;
+    grains = [...Array(DESK ? 500 : 320)].map(() => ({ x: Math.random() * W, y: Math.random() * H, t: Math.random() * 3 }));
+  }
+  return {
+    dur: 140, hiddenTitle: 'the dunes are still moving',
+    enter() { init(); S.drone([mtof(36), mtof(43), mtof(48), mtof(55)], .1, 400); },
+    resize() { init(); },
+    move(p) { const a = Math.atan2(p.dy, p.dx); if (Math.hypot(p.dx, p.dy) > 3) wdir = wdir + Math.atan2(Math.sin(a - wdir), Math.cos(a - wdir)) * .05; },
+    shake() { hiss = 1; },
+    frame(dt) {
+      wt += dt * .35; sunA += dt * TAU / 140; hiss = Math.max(0, hiss - dt * .3);
+      const lx = Math.cos(sunA), ly = Math.sin(sunA), lz = .35 + .15 * Math.sin(sunA * 2), dx = Math.cos(wdir), dy = Math.sin(wdir), D = img.data, [hi, lo] = sand;
+      const height = (x, y) => { const s = (x * dx + y * dy) * .055 * rs / 3 + warp[(y | 0) * sw + (x | 0)] - wt, c = (-x * dy + y * dx) * .02; let v = Math.sin(s + Math.sin(c) * 1.5); v = v + .35 * Math.sin(2 * s + .8); return v + .035 * Math.sin((x * dx + y * dy) * .75 * rs / 3 - wt * 6 + c * 3); };
+      for (let y = 1; y < sh - 1; y++) for (let x = 1; x < sw - 1; x++) {
+        const hx = height(x + 1, y) - height(x - 1, y), hy = height(x, y + 1) - height(x, y - 1), nl = Math.hypot(hx, hy, .6), l = clamp((-hx * lx - hy * ly + .6 * lz) / nl, 0, 1);
+        const k = Math.pow(l, 1.4), o = (y * sw + x) * 4, sp = l > .93 ? (Math.random() < .03 ? 60 : 0) : 0;
+        D[o] = lerp(lo[0] * .45, hi[0], k) + sp; D[o + 1] = lerp(lo[1] * .45, hi[1], k) + sp; D[o + 2] = lerp(lo[2] * .5, hi[2], k) + sp; D[o + 3] = 255;
+      }
+      cx2.putImageData(img, 0, 0);
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.drawImage(cvs, 1, 1, sw - 2, sh - 2, 0, 0, W, H);
+      // grains lifted off the crests
+      g.fillStyle = `rgba(255,240,215,${.35 + hiss * .3})`;
+      for (const q of grains) { q.t += dt; q.x += dx * (60 + hiss * 120) * dt + Math.sin(q.t * 4) * .4; q.y += dy * (60 + hiss * 120) * dt; if (q.t > 3 || q.x < -5 || q.y < -5 || q.x > W + 5 || q.y > H + 5) { q.x = Math.random() * W; q.y = Math.random() * H; q.t = 0; } g.globalAlpha = Math.sin(q.t / 3 * Math.PI) * .6; g.fillRect(q.x, q.y, 1.2, 1.2); }
+      g.globalAlpha = 1;
+      if (hiss > 0) { g.fillStyle = `rgba(220,190,150,${hiss * .25})`; g.fillRect(0, 0, W, H); }
+      if (Math.random() < dt * .5) S.noise({ dur: 1.6, f: 2500 + hiss * 2000, ft: 'bandpass', q: .6, g: .01 + hiss * .03, wet: .6 });
+    }
+  };
+}
+
+// ======================================================================
+// XLV. KELP — a kelp forest: the fronds lean and sway in the swell,
+//      light ripples over the sand below, a shoal turns as one. Push
+//      the water.
+// ======================================================================
+function Kelp() {
+  const R = seedNow(6311);
+  let strands, fish, plank, cv2, cx3, cimg, cw, chh, push = { x: 0, y: 0, k: 0 };
+  function init() {
+    strands = [...Array(DESK ? 22 : 14)].map(() => { const z = R(), x = R() * W, n = 18, L = H * (.55 + R() * .4) * (.6 + z * .5); return { z, nodes: [...Array(n)].map((_, i) => ({ x, y: H - i * L / n, px: x, py: H - i * L / n })), seg: L / n, hue: R() }; }).sort((a, b) => a.z - b.z);
+    fish = [...Array(DESK ? 70 : 45)].map(() => ({ x: rand(.3, .7) * W, y: rand(.2, .6) * H, vx: rand(-20, 20), vy: rand(-5, 5) }));
+    plank = [...Array(150)].map(() => ({ x: R() * W, y: R() * H, z: R() }));
+    cw = Math.ceil(W / 5); chh = Math.ceil(H * .35 / 5); cv2 = mk(cw, chh); cx3 = cv2.getContext('2d'); cimg = cx3.createImageData(cw, chh);
+  }
+  return {
+    dur: 130, hiddenTitle: 'the forest is still swaying',
+    enter() { init(); S.drone([mtof(36), mtof(43), mtof(47), mtof(55)], .14, 420); },
+    resize() { init(); },
+    move(p) { push = { x: p.x, y: p.y, k: 1, dx: p.dx, dy: p.dy }; if (Math.random() < .15) S.noise({ dur: .5, f: 500, ft: 'lowpass', g: .02 }); },
+    shake() { for (const f of fish) { f.vx += rand(-200, 200); f.vy += rand(-200, 200); } },
+    frame(dt) {
+      push.k = Math.max(0, push.k - dt * 2);
+      const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2c7a8c'); bg.addColorStop(.5, '#0f3f52'); bg.addColorStop(1, '#06202c');
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.fillStyle = bg; g.fillRect(0, 0, W, H);
+      // caustics: interfering ripples, sharpened into the bright net light makes on sand
+      const D = cimg.data, t = T * .8;
+      for (let y = 0; y < chh; y++) for (let x = 0; x < cw; x++) {
+        const u = x * .22, v = y * .3 + x * .05, c = Math.abs(Math.sin(u + t) + Math.sin(v * 1.3 - t * .7) + Math.sin((u + v) * .7 + t * 1.3)), k = Math.pow(clamp(1 - c / 1.2, 0, 1), 3), o = (y * cw + x) * 4;
+        D[o] = 170 * k; D[o + 1] = 230 * k; D[o + 2] = 210 * k; D[o + 3] = 255;
+      }
+      cx3.putImageData(cimg, 0, 0);
+      g.fillStyle = '#3b3a2a'; g.fillRect(0, H * .65, W, H * .35);
+      g.globalCompositeOperation = 'lighter'; g.globalAlpha = .45; g.drawImage(cv2, 0, H * .65, W, H * .35); g.globalAlpha = 1;
+      for (let i = 0; i < 5; i++) { const x = (i / 5 + Math.sin(T * .07 + i) * .05) * W * 1.2, lg = g.createLinearGradient(x, 0, x + 80, H * .7); lg.addColorStop(0, 'rgba(200,240,255,.07)'); lg.addColorStop(1, 'rgba(200,240,255,0)'); g.fillStyle = lg; g.beginPath(); g.moveTo(x - 30, 0); g.lineTo(x + 40, 0); g.lineTo(x + 160, H * .7); g.lineTo(x + 60, H * .7); g.fill(); }
+      g.globalCompositeOperation = 'source-over';
+      // kelp: buoyant chains held at the root, pushed by the swell
+      const swell = Math.sin(T * .5) * 1.2 + Math.sin(T * .17) * .8;
+      for (const s of strands) {
+        const ns = s.nodes;
+        for (let i = 1; i < ns.length; i++) {
+          const n = ns[i], vx = (n.x - n.px) * .96, vy = (n.y - n.py) * .96; n.px = n.x; n.py = n.y;
+          let fx = swell * .12 * (i / ns.length) + Math.sin(T * 1.3 + i * .3 + s.hue * 9) * .03, fy = -.35;
+          if (push.k > 0) { const d = Math.hypot(n.x - push.x, n.y - push.y); if (d < 120) { fx += push.dx * .02 * push.k; fy += push.dy * .02 * push.k; } }
+          n.x += vx + fx; n.y += vy + fy;
+        }
+        for (let it = 0; it < 3; it++) for (let i = 1; i < ns.length; i++) { const a = ns[i - 1], b = ns[i], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, f = (d - s.seg) / d; if (i > 1) { a.x += dx * f * .5; a.y += dy * f * .5; b.x -= dx * f * .5; b.y -= dy * f * .5; } else { b.x -= dx * f; b.y -= dy * f; } }
+        const dim = .35 + s.z * .65, col = [lerp(90, 160, s.hue) * dim, lerp(110, 120, s.hue) * dim, 40 * dim];
+        g.strokeStyle = rgba(col, 1); g.lineWidth = 1.5 + s.z * 2; g.beginPath(); g.moveTo(ns[0].x, ns[0].y); for (let i = 1; i < ns.length; i++) g.lineTo(ns[i].x, ns[i].y); g.stroke();
+        g.fillStyle = rgba(mixc(col, [200, 170, 60], .2), .85);
+        for (let i = 2; i < ns.length; i += 1) { const a = ns[i - 1], b = ns[i], an = Math.atan2(b.y - a.y, b.x - a.x), side = i % 2 ? 1 : -1, l = s.seg * (1.3 + s.z); g.save(); g.translate(b.x, b.y); g.rotate(an + side * .7 + Math.sin(T + i) * .1); g.beginPath(); g.ellipse(l * .5, 0, l * .5, l * .13, 0, 0, TAU); g.fill(); g.restore(); }
+      }
+      // the shoal
+      let cxm = 0, cym = 0; for (const f of fish) { cxm += f.x; cym += f.y; } cxm /= fish.length; cym /= fish.length;
+      for (const f of fish) {
+        f.vx += (cxm - f.x) * .3 * dt + Math.sin(T * .3) * 20 * dt; f.vy += (cym - f.y) * .3 * dt + Math.cos(T * .23) * 8 * dt;
+        if (push.k > 0) { const d = Math.hypot(f.x - push.x, f.y - push.y); if (d < 140) { f.vx += (f.x - push.x) / d * 400 * dt; f.vy += (f.y - push.y) / d * 400 * dt; } }
+        const sp = Math.hypot(f.vx, f.vy), mx = 90; if (sp > mx) { f.vx *= mx / sp; f.vy *= mx / sp; }
+        f.x += f.vx * dt; f.y += f.vy * dt; f.y = clamp(f.y, H * .1, H * .7); if (f.x < -30) f.x = W + 30; if (f.x > W + 30) f.x = -30;
+        const an = Math.atan2(f.vy, f.vx), flash = Math.abs(Math.sin(an * 3 + T * 2));
+        g.fillStyle = `rgba(${200 + flash * 55 | 0},${215 + flash * 40 | 0},${225 + flash * 30 | 0},${.6 + flash * .3})`;
+        g.save(); g.translate(f.x, f.y); g.rotate(an); g.beginPath(); g.moveTo(6, 0); g.lineTo(-4, -2.2); g.lineTo(-4, 2.2); g.closePath(); g.fill(); g.restore();
+      }
+      g.fillStyle = 'rgba(220,240,230,.35)'; for (const p of plank) { p.y -= (2 + p.z * 4) * dt; p.x += Math.sin(T + p.z * 9) * 3 * dt; if (p.y < 0) p.y = H; g.fillRect(p.x, p.y, 1 + p.z, 1 + p.z); }
+    }
+  };
+}
+
+// ======================================================================
+// XLVI. STORM — lightning feels its way down in steps and branches, then
+//       the return stroke floods the sky. Each strike burns a little
+//       more of a Lichtenberg figure into the dark. Tap to call one;
+//       hold to gather charge.
+// ======================================================================
+function Storm() {
+  const R = seedNow(1777);
+  let plate, px, bolt = null, flash = 0, next = 2, charge = null, rain = [], strikes = 0;
+  function init() { plate = mk(W, H); px = plate.getContext('2d'); rain = [...Array(DESK ? 300 : 180)].map(() => ({ x: Math.random() * W, y: Math.random() * H, v: rand(500, 900) })); }
+  function grow(x, y, tx, ty, depth, segs, w) {
+    let a = Math.atan2(ty - y, tx - x), n = 0;
+    while (y < ty && n++ < 400 && x > -50 && x < W + 50) {
+      a += rand(-.6, .6); const want = Math.atan2(ty - y, tx - x); a = a + Math.atan2(Math.sin(want - a), Math.cos(want - a)) * .25;
+      const L = rand(5, 12), nx = x + Math.cos(a) * L, ny = y + Math.max(1, Math.sin(a) * L);
+      segs.push([x, y, nx, ny, w, segs.length]); x = nx; y = ny;
+      if (depth < 3 && Math.random() < .08 - depth * .02) grow(x, y, x + rand(-200, 200), y + rand(60, 260), depth + 1, segs, w * .5);
+      if (depth > 0 && Math.random() < .03) break;
+    }
+  }
+  function strike(tx, ty, power = 1) {
+    const segs = []; grow(rand(.1, .9) * W, -10, tx, ty, 0, segs, 2.4 * power);
+    bolt = { segs, t: 0, lead: 0 }; strikes++;
+  }
+  return {
+    dur: 130, hiddenTitle: 'the storm is still here',
+    enter() { init(); S.drone([mtof(31), mtof(38), mtof(43), mtof(50)], .2, 300); },
+    resize() { init(); },
+    down(p) { charge = { p, t: T }; },
+    up(p) {
+      if (!charge || charge.p !== p) return; const held = T - charge.t; charge = null;
+      if (p.moved < 20 && !bolt) { strike(p.x, p.y, clamp(.8 + held * .5, .8, 2.2)); found('struck'); }
+    },
+    thunder() { if (!bolt) strike(rand(.1, .9) * W, H * rand(.6, 1)); },
+    frame(dt) {
+      next -= dt; const stormy = LIVE.wx && LIVE.wx.storm ? .5 : 1;
+      if (next <= 0 && !bolt) { next = rand(3, 9) * stormy; strike(rand(.1, .9) * W, H * rand(.55, 1)); }
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+      const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0a0b14'); bg.addColorStop(1, '#141422'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'lighter'; g.drawImage(plate, 0, 0, W, H);
+      if (bolt) {
+        bolt.t += dt; bolt.lead = Math.min(bolt.segs.length, bolt.lead + dt * 900);
+        const done = bolt.lead >= bolt.segs.length;
+        if (done && !bolt.ret) {
+          bolt.ret = true; flash = 1; buzz([30, 20, 60]);
+          S.noise({ dur: .15, f: 6000, ft: 'highpass', g: .08 }); S.noise({ dur: 3, f: 140, ft: 'lowpass', g: .35, wet: .9, at: rand(.4, 2) });
+          px.globalCompositeOperation = 'lighter'; px.strokeStyle = 'rgba(150,170,255,.05)'; px.lineCap = 'round';
+          for (const s of bolt.segs) { px.lineWidth = s[4] * 2.5; px.beginPath(); px.moveTo(s[0], s[1]); px.lineTo(s[2], s[3]); px.stroke(); }
+        }
+        const fade = bolt.ret ? Math.max(0, 1 - (bolt.t - bolt.segs.length / 900) * 1.5) : .55;
+        g.lineCap = 'round';
+        for (const pass of [[6, .08], [2, .5], [.8, 1]]) {
+          g.strokeStyle = `rgba(200,215,255,${pass[1] * fade})`; g.beginPath();
+          for (let i = 0; i < bolt.lead; i++) { const s = bolt.segs[i]; g.moveTo(s[0], s[1]); g.lineTo(s[2], s[3]); }
+          g.lineWidth = pass[0]; g.stroke();
+        }
+        if (bolt.ret && fade <= 0) bolt = null;
+      }
+      g.globalCompositeOperation = 'source-over';
+      if (charge) { const k = Math.min(1, (T - charge.t) / 2), p = charge.p; g.globalCompositeOperation = 'lighter'; g.globalAlpha = k; g.drawImage(sprite('160,180,255', 64), p.x - 30 - k * 20, p.y - 30 - k * 20, 60 + k * 40, 60 + k * 40); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; }
+      g.strokeStyle = 'rgba(170,180,210,.25)'; g.lineWidth = 1; g.beginPath();
+      for (const r of rain) { r.y += r.v * dt; r.x -= r.v * .08 * dt; if (r.y > H) { r.y = -10; r.x = Math.random() * W * 1.1; } g.moveTo(r.x, r.y); g.lineTo(r.x - 1.5, r.y + 12); } g.stroke();
+      if (flash > 0) { g.fillStyle = `rgba(220,225,255,${flash * .5})`; g.fillRect(0, 0, W, H); flash = Math.max(0, flash - dt * 3.5); }
+    }
+  };
+}
+
+// ======================================================================
+// XLVII. GALAXY — a spiral galaxy from a few thousand stars, each on its
+//        own ellipse. Nothing holds the arms together but a pattern in
+//        the orbits (a density wave), and still they last. Drag to tilt
+//        it; tap for a supernova.
+// ======================================================================
+function Galaxy() {
+  const R = seedNow(3001), arms = [2, 2, 2, 3, 4][R() * 5 | 0], twist = rand(2.2, 4.2) * (R() < .5 ? 1 : -1), bar = R() < .4;
+  let stars, inc = rand(.3, 1.1), tgt = inc, spin = R() * TAU, novas = [], view = 0;
+  function init() {
+    const n = (DESK ? 5200 : 3000) * Math.max(.5, QUAL);
+    stars = [];
+    for (let i = 0; i < n; i++) {
+      const a = Math.pow(R(), .7), e = .38 + R() * .18, th = R() * TAU, warm = R() < clamp(1.2 - a * 1.6, .1, .95);
+      stars.push({ a, e, th, w: .25 / Math.max(.08, a), c: warm ? [255, 220, 170] : (R() < .15 ? [255, 160, 200] : [190, 210, 255]), b: R(), arm: (R() * arms | 0) });
+    }
+  }
+  return {
+    dur: 150, hiddenTitle: 'it is still turning',
+    enter() { init(); S.drone([mtof(29), mtof(36), mtof(41), mtof(48)], .2, 350); },
+    resize() {},
+    move(p) { tgt = clamp(tgt + p.dy * .004, 0, 1.45); spin += p.dx * .003; },
+    up(p) { if (p.moved < 12) { novas.push({ x: p.x, y: p.y, t: 0 }); S.bell(mtof(45), 0, .9); S.noise({ dur: 2, f: 300, ft: 'lowpass', g: .1, wet: .9 }); buzz(25); found('supernova'); } },
+    frame(dt) {
+      view += dt; tgt = clamp(tgt + Math.sin(view * .05) * dt * .02 + TILT.ry * dt * .1, 0, 1.45); inc = lerp(inc, tgt, dt * 2); spin += dt * .02;
+      g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.fillStyle = 'rgba(2,2,6,1)'; g.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'lighter';
+      const M = Math.min(W, H) * .47, ci = Math.cos(inc), cx = W / 2, cy = H / 2, cs = Math.cos(spin), sn = Math.sin(spin);
+      g.globalAlpha = .6; g.drawImage(sprite('255,225,180', 128), cx - M * .35, cy - M * .35 * Math.max(.3, ci), M * .7, M * .7 * Math.max(.3, ci)); g.globalAlpha = 1;
+      for (const s of stars) {
+        s.th += s.w * dt * .5;
+        // every ellipse is turned a little more the further out it is: the arms are where they crowd together
+        const phi = (bar && s.a < .22 ? .22 * twist : s.a * twist) + s.arm * TAU / arms, r = s.a * M, ex = Math.cos(s.th) * r, ey = Math.sin(s.th) * r * (1 - s.e);
+        const x0 = ex * Math.cos(phi) - ey * Math.sin(phi), y0 = ex * Math.sin(phi) + ey * Math.cos(phi);
+        const x = x0 * cs - y0 * sn, y = (x0 * sn + y0 * cs) * ci;
+        g.fillStyle = rgba(s.c, .35 + s.b * .5); const z = s.b > .97 ? 2 : 1.1; g.fillRect(cx + x, cy + y, z, z);
+      }
+      for (let i = novas.length - 1; i >= 0; i--) { const n = novas[i]; n.t += dt; if (n.t > 6) { novas.splice(i, 1); continue; } const k = 1 - n.t / 6, s = 10 + n.t * 40; g.globalAlpha = k; g.drawImage(sprite('255,240,220', 64), n.x - s, n.y - s, s * 2, s * 2); g.strokeStyle = `rgba(255,160,140,${k * .5})`; g.lineWidth = 1; g.beginPath(); g.arc(n.x, n.y, n.t * 60, 0, TAU); g.stroke(); }
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    }
+  };
+}
+
+// ======================================================================
 // RELIQUARY — found only by someone who has found everything else. Every
 //             gold star you have kept turns slowly around you, and the
 //             ghost of your hand draws in gold.
@@ -4455,11 +5181,14 @@ if (MIRROR) found('leap');
 const MOVES = [Shy, Unbreaking, Cave, Asemic, Droste, Absence, Sunflower, Bodies, Butterfly, Chladni, Epicycles, Relativity, Murmur, Today, Pendulums, Skin,
   Rings, Labyrinth, Ant, Flock, Harmonograph, Sandpile, Call, Frost,
   Fireflies, Mould, Ripple, Staircase, Penrose, Swing, Glass, Rivers, Deep, Aurora, Tide, Motes, Year, Crossing,
+  Ink, Jelly, Silk, Leaf, Meadow, Sky, Dunes, Kelp, Storm, Galaxy,
   Reliquary, Hourglass, Once, Fullmoon];
 // the last four are never in the ordinary rotation: the reliquary is behind the corner door once the key is complete, the hourglass
 // behind a turned-over phone once the hourglass is, Once happens a single time on the tenth visit, and Fullmoon only at the full moon
 const RELIQ = MOVES.indexOf(Reliquary), HOURG = MOVES.indexOf(Hourglass), ONCE_I = MOVES.indexOf(Once), FULL_I = MOVES.indexOf(Fullmoon), NPUB = RELIQ;
 if (PREV_VER && PREV_VER < 5 && MEM.seen[24]) { MEM.seen[RELIQ] = MEM.seen[24]; MEM.seen[24] = 0; saveMem(); }
+// version 5 kept the four hidden movements at 38-41; ten new ones now sit there
+if (PREV_VER === 5) { for (let k = 0; k < 4; k++) { MEM.seen[RELIQ + k] = MEM.seen[38 + k] | 0; MEM.seen[38 + k] = 0; } saveMem(); }
 const TITLE = 'timesbane';
 let T = 0, last = performance.now(), started = false, ign = -1;
 let cur = null, curI = -1, nextI = -1, phase = 'idle', fade = 0, mStart = 0, lastInput = 0, lastDown = { t: -9, x: 0, y: 0 };
